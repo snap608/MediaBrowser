@@ -1,20 +1,19 @@
 ﻿using MediaBrowser.Common.Net;
+using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Net;
-using ServiceStack.ServiceHost;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
+using MediaBrowser.Model.Services;
 
 namespace MediaBrowser.Api
 {
     /// <summary>
     /// Class GetDirectoryContents
     /// </summary>
-    [Route("/Environment/DirectoryContents", "GET")]
-    [Api(Description = "Gets the contents of a given directory in the file system")]
+    [Route("/Environment/DirectoryContents", "GET", Summary = "Gets the contents of a given directory in the file system")]
     public class GetDirectoryContents : IReturn<List<FileSystemEntryInfo>>
     {
         /// <summary>
@@ -44,13 +43,28 @@ namespace MediaBrowser.Api
         /// <value><c>true</c> if [include hidden]; otherwise, <c>false</c>.</value>
         [ApiMember(Name = "IncludeHidden", Description = "An optional filter to include or exclude hidden files and folders. true/false", IsRequired = false, DataType = "boolean", ParameterType = "query", Verb = "GET")]
         public bool IncludeHidden { get; set; }
+
+        public GetDirectoryContents()
+        {
+            IncludeHidden = true;
+        }
+    }
+
+    [Route("/Environment/NetworkShares", "GET", Summary = "Gets shares from a network device")]
+    public class GetNetworkShares : IReturn<List<FileSystemEntryInfo>>
+    {
+        /// <summary>
+        /// Gets or sets the path.
+        /// </summary>
+        /// <value>The path.</value>
+        [ApiMember(Name = "Path", IsRequired = true, DataType = "string", ParameterType = "query", Verb = "GET")]
+        public string Path { get; set; }
     }
 
     /// <summary>
     /// Class GetDrives
     /// </summary>
-    [Route("/Environment/Drives", "GET")]
-    [Api(Description = "Gets available drives from the server's file system")]
+    [Route("/Environment/Drives", "GET", Summary = "Gets available drives from the server's file system")]
     public class GetDrives : IReturn<List<FileSystemEntryInfo>>
     {
     }
@@ -58,28 +72,53 @@ namespace MediaBrowser.Api
     /// <summary>
     /// Class GetNetworkComputers
     /// </summary>
-    [Route("/Environment/NetworkDevices", "GET")]
-    [Api(Description = "Gets a list of devices on the network")]
+    [Route("/Environment/NetworkDevices", "GET", Summary = "Gets a list of devices on the network")]
     public class GetNetworkDevices : IReturn<List<FileSystemEntryInfo>>
     {
+    }
+
+    [Route("/Environment/ParentPath", "GET", Summary = "Gets the parent path of a given path")]
+    public class GetParentPath : IReturn<string>
+    {
+        /// <summary>
+        /// Gets or sets the path.
+        /// </summary>
+        /// <value>The path.</value>
+        [ApiMember(Name = "Path", IsRequired = true, DataType = "string", ParameterType = "query", Verb = "GET")]
+        public string Path { get; set; }
+    }
+
+    public class DefaultDirectoryBrowserInfo
+    {
+        public string Path { get; set; }
+    }
+
+    [Route("/Environment/DefaultDirectoryBrowser", "GET", Summary = "Gets the parent path of a given path")]
+    public class GetDefaultDirectoryBrowser : IReturn<DefaultDirectoryBrowserInfo>
+    {
+        
     }
 
     /// <summary>
     /// Class EnvironmentService
     /// </summary>
+    [Authenticated(Roles = "Admin", AllowBeforeStartupWizard = true)]
     public class EnvironmentService : BaseApiService
     {
+        const char UncSeparator = '\\';
+        const string UncSeparatorString = "\\";
+
         /// <summary>
         /// The _network manager
         /// </summary>
         private readonly INetworkManager _networkManager;
+        private IFileSystem _fileSystem;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="EnvironmentService" /> class.
         /// </summary>
         /// <param name="networkManager">The network manager.</param>
-        /// <exception cref="System.ArgumentNullException">networkManager</exception>
-        public EnvironmentService(INetworkManager networkManager)
+        public EnvironmentService(INetworkManager networkManager, IFileSystem fileSystem)
         {
             if (networkManager == null)
             {
@@ -87,6 +126,27 @@ namespace MediaBrowser.Api
             }
 
             _networkManager = networkManager;
+            _fileSystem = fileSystem;
+        }
+
+        public object Get(GetDefaultDirectoryBrowser request)
+        {
+            var result = new DefaultDirectoryBrowserInfo();
+
+            try
+            {
+                var qnap = "/share/CACHEDEV1_DATA";
+                if (_fileSystem.DirectoryExists(qnap))
+                {
+                    result.Path = qnap;
+                }
+            }
+            catch
+            {
+
+            }
+
+            return ToOptimizedResult(result);
         }
 
         /// <summary>
@@ -94,8 +154,6 @@ namespace MediaBrowser.Api
         /// </summary>
         /// <param name="request">The request.</param>
         /// <returns>System.Object.</returns>
-        /// <exception cref="System.ArgumentNullException">Path</exception>
-        /// <exception cref="System.ArgumentException"></exception>
         public object Get(GetDirectoryContents request)
         {
             var path = request.Path;
@@ -105,18 +163,23 @@ namespace MediaBrowser.Api
                 throw new ArgumentNullException("Path");
             }
 
-            if (path.StartsWith(NetworkPrefix, StringComparison.OrdinalIgnoreCase) && path.LastIndexOf('\\') == 1)
+            var networkPrefix = UncSeparatorString + UncSeparatorString;
+
+            if (path.StartsWith(networkPrefix, StringComparison.OrdinalIgnoreCase) && path.LastIndexOf(UncSeparator) == 1)
             {
-                return ToOptimizedResult(GetNetworkShares(path).OrderBy(i => i.Path).ToList());
+                return ToOptimizedSerializedResultUsingCache(GetNetworkShares(path).OrderBy(i => i.Path).ToList());
             }
 
-            // Reject invalid input
-            if (!Path.IsPathRooted(path))
-            {
-                throw new ArgumentException(string.Format("Invalid path: {0}", path));
-            }
+            return ToOptimizedSerializedResultUsingCache(GetFileSystemEntries(request).OrderBy(i => i.Path).ToList());
+        }
 
-            return ToOptimizedResult(GetFileSystemEntries(request).OrderBy(i => i.Path).ToList());
+        public object Get(GetNetworkShares request)
+        {
+            var path = request.Path;
+
+            var shares = GetNetworkShares(path).OrderBy(i => i.Path).ToList();
+
+            return ToOptimizedSerializedResultUsingCache(shares);
         }
 
         /// <summary>
@@ -128,7 +191,21 @@ namespace MediaBrowser.Api
         {
             var result = GetDrives().ToList();
 
-            return ToOptimizedResult(result);
+            return ToOptimizedSerializedResultUsingCache(result);
+        }
+
+        /// <summary>
+        /// Gets the list that is returned when an empty path is supplied
+        /// </summary>
+        /// <returns>IEnumerable{FileSystemEntryInfo}.</returns>
+        private IEnumerable<FileSystemEntryInfo> GetDrives()
+        {
+            return _fileSystem.GetDrives().Select(d => new FileSystemEntryInfo
+            {
+                Name = d.Name,
+                Path = d.FullName,
+                Type = FileSystemEntryType.Directory
+            });
         }
 
         /// <summary>
@@ -138,49 +215,11 @@ namespace MediaBrowser.Api
         /// <returns>System.Object.</returns>
         public object Get(GetNetworkDevices request)
         {
-            var result = GetNetworkDevices().OrderBy(i => i.Path).ToList();
+            var result = _networkManager.GetNetworkDevices()
+                .OrderBy(i => i.Path)
+                .ToList();
 
-            return ToOptimizedResult(result);
-        }
-
-        /// <summary>
-        /// Gets the list that is returned when an empty path is supplied
-        /// </summary>
-        /// <returns>IEnumerable{FileSystemEntryInfo}.</returns>
-        private IEnumerable<FileSystemEntryInfo> GetDrives()
-        {
-            // Only include drives in the ready state or this method could end up being very slow, waiting for drives to timeout
-            return DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => new FileSystemEntryInfo
-            {
-                Name = GetName(d),
-                Path = d.RootDirectory.FullName,
-                Type = FileSystemEntryType.Directory
-
-            });
-        }
-
-        /// <summary>
-        /// Gets the network computers.
-        /// </summary>
-        /// <returns>IEnumerable{FileSystemEntryInfo}.</returns>
-        private IEnumerable<FileSystemEntryInfo> GetNetworkDevices()
-        {
-            return _networkManager.GetNetworkDevices().Select(c => new FileSystemEntryInfo
-            {
-                Name = c,
-                Path = NetworkPrefix + c,
-                Type = FileSystemEntryType.NetworkComputer
-            });
-        }
-
-        /// <summary>
-        /// Gets the name.
-        /// </summary>
-        /// <param name="drive">The drive.</param>
-        /// <returns>System.String.</returns>
-        private string GetName(DriveInfo drive)
-        {
-            return drive.Name;
+            return ToOptimizedSerializedResultUsingCache(result);
         }
 
         /// <summary>
@@ -205,19 +244,15 @@ namespace MediaBrowser.Api
         /// <returns>IEnumerable{FileSystemEntryInfo}.</returns>
         private IEnumerable<FileSystemEntryInfo> GetFileSystemEntries(GetDirectoryContents request)
         {
-            var entries = new DirectoryInfo(request.Path).EnumerateFileSystemInfos().Where(i =>
+            // using EnumerateFileSystemInfos doesn't handle reparse points (symlinks)
+            var entries = _fileSystem.GetFileSystemEntries(request.Path).Where(i =>
             {
-                if (i.Attributes.HasFlag(FileAttributes.System))
+                if (!request.IncludeHidden && i.IsHidden)
                 {
                     return false;
                 }
 
-                if (!request.IncludeHidden && i.Attributes.HasFlag(FileAttributes.Hidden))
-                {
-                    return false;
-                }
-
-                var isDirectory = i.Attributes.HasFlag(FileAttributes.Directory);
+                var isDirectory = i.IsDirectory;
 
                 if (!request.IncludeFiles && !isDirectory)
                 {
@@ -228,7 +263,7 @@ namespace MediaBrowser.Api
                 {
                     return false;
                 }
-                
+
                 return true;
             });
 
@@ -236,18 +271,32 @@ namespace MediaBrowser.Api
             {
                 Name = f.Name,
                 Path = f.FullName,
-                Type = f.Attributes.HasFlag(FileAttributes.Directory) ? FileSystemEntryType.Directory : FileSystemEntryType.File
+                Type = f.IsDirectory ? FileSystemEntryType.Directory : FileSystemEntryType.File
 
             }).ToList();
         }
 
-        /// <summary>
-        /// Gets the network prefix.
-        /// </summary>
-        /// <value>The network prefix.</value>
-        private string NetworkPrefix
+        public object Get(GetParentPath request)
         {
-            get { return Path.DirectorySeparatorChar.ToString(CultureInfo.InvariantCulture) + Path.DirectorySeparatorChar.ToString(CultureInfo.InvariantCulture); }
+            var parent = Path.GetDirectoryName(request.Path);
+
+            if (string.IsNullOrEmpty(parent))
+            {
+                // Check if unc share
+                var index = request.Path.LastIndexOf(UncSeparator);
+
+                if (index != -1 && request.Path.IndexOf(UncSeparator) == 0)
+                {
+                    parent = request.Path.Substring(0, index);
+
+                    if (string.IsNullOrWhiteSpace(parent.TrimStart(UncSeparator)))
+                    {
+                        parent = null;
+                    }
+                }
+            }
+
+            return parent;
         }
     }
 }

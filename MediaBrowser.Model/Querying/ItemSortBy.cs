@@ -6,6 +6,7 @@ namespace MediaBrowser.Model.Querying
     /// </summary>
     public static class ItemSortBy
     {
+        public const string AiredEpisodeOrder = "AiredEpisodeOrder";
         /// <summary>
         /// The album
         /// </summary>
@@ -19,17 +20,13 @@ namespace MediaBrowser.Model.Querying
         /// </summary>
         public const string Artist = "Artist";
         /// <summary>
-        /// The budget
-        /// </summary>
-        public const string Budget = "Budget";
-        /// <summary>
-        /// The revenue
-        /// </summary>
-        public const string Revenue = "Revenue";
-        /// <summary>
         /// The date created
         /// </summary>
         public const string DateCreated = "DateCreated";
+        /// <summary>
+        /// The official rating
+        /// </summary>
+        public const string OfficialRating = "OfficialRating";
         /// <summary>
         /// The date played
         /// </summary>
@@ -38,10 +35,12 @@ namespace MediaBrowser.Model.Querying
         /// The premiere date
         /// </summary>
         public const string PremiereDate = "PremiereDate";
+        public const string StartDate = "StartDate";
         /// <summary>
         /// The sort name
         /// </summary>
         public const string SortName = "SortName";
+        public const string Name = "Name";
         /// <summary>
         /// The random
         /// </summary>
@@ -66,6 +65,18 @@ namespace MediaBrowser.Model.Querying
         /// The critic rating
         /// </summary>
         public const string CriticRating = "CriticRating";
-
+        public const string IsFolder = "IsFolder";
+        public const string IsUnplayed = "IsUnplayed";
+        public const string IsPlayed = "IsPlayed";
+        public const string SeriesSortName = "SeriesSortName";
+        public const string VideoBitRate = "VideoBitRate";
+        public const string AirTime = "AirTime";
+        public const string Metascore = "Metascore";
+        public const string Studio = "Studio";
+        public const string Players = "Players";
+        public const string GameSystem = "GameSystem";
+        public const string IsFavoriteOrLiked = "IsFavoriteOrLiked";
+        public const string DateLastContentAdded = "DateLastContentAdded";
+        public const string SeriesDatePlayed = "SeriesDatePlayed";
     }
 }

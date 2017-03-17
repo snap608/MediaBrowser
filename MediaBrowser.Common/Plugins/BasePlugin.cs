@@ -3,9 +3,6 @@ using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
 using System;
 using System.IO;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Threading;
 
 namespace MediaBrowser.Common.Plugins
 {
@@ -13,7 +10,7 @@ namespace MediaBrowser.Common.Plugins
     /// Provides a common base class for all plugins
     /// </summary>
     /// <typeparam name="TConfigurationType">The type of the T configuration type.</typeparam>
-    public abstract class BasePlugin<TConfigurationType> : IPlugin
+    public abstract class BasePlugin<TConfigurationType> : IPlugin, IPluginAssembly
         where TConfigurationType : BasePluginConfiguration
     {
         /// <summary>
@@ -57,69 +54,43 @@ namespace MediaBrowser.Common.Plugins
         {
             get { return typeof(TConfigurationType); }
         }
-        
-        /// <summary>
-        /// The _assembly name
-        /// </summary>
-        private AssemblyName _assemblyName;
-        /// <summary>
-        /// Gets the name of the assembly.
-        /// </summary>
-        /// <value>The name of the assembly.</value>
-        protected AssemblyName AssemblyName
+
+        public void SetAttributes(string assemblyFilePath, string assemblyFileName, Version assemblyVersion, Guid assemblyId)
         {
-            get
-            {
-                return _assemblyName ?? (_assemblyName = GetType().Assembly.GetName());
-            }
+            AssemblyFilePath = assemblyFilePath;
+            AssemblyFileName = assemblyFileName;
+            Version = assemblyVersion;
+            Id = assemblyId;
         }
 
-        /// <summary>
-        /// The _unique id
-        /// </summary>
-        private Guid? _uniqueId;
+        private Func<string, DateTime> _dateModifiedFn;
+        private Action<string> _directoryCreateFn;
+        public void SetStartupInfo(bool isFirstRun, Func<string, DateTime> dateModifiedFn, Action<string> directoryCreateFn)
+        {
+            IsFirstRun = isFirstRun;
+
+            // hack alert, until the .net core transition is complete
+            _dateModifiedFn = dateModifiedFn;
+            _directoryCreateFn = directoryCreateFn;
+        }
 
         /// <summary>
         /// Gets the unique id.
         /// </summary>
         /// <value>The unique id.</value>
-        public Guid Id
-        {
-            get
-            {
-
-                if (!_uniqueId.HasValue)
-                {
-                    _uniqueId = Marshal.GetTypeLibGuidForAssembly(GetType().Assembly);
-                }
-
-                return _uniqueId.Value;
-            }
-        }
+        public Guid Id { get; private set; }
 
         /// <summary>
         /// Gets the plugin version
         /// </summary>
         /// <value>The version.</value>
-        public Version Version
-        {
-            get
-            {
-                return AssemblyName.Version;
-            }
-        }
+        public Version Version { get; private set; }
 
         /// <summary>
         /// Gets the name the assembly file
         /// </summary>
         /// <value>The name of the assembly file.</value>
-        public string AssemblyFileName
-        {
-            get
-            {
-                return AssemblyName.Name + ".dll";
-            }
-        }
+        protected string AssemblyFileName { get; private set; }
 
         /// <summary>
         /// Gets the last date modified of the configuration
@@ -132,19 +103,7 @@ namespace MediaBrowser.Common.Plugins
                 // Ensure it's been lazy loaded
                 var config = Configuration;
 
-                return File.GetLastWriteTimeUtc(ConfigurationFilePath);
-            }
-        }
-
-        /// <summary>
-        /// Gets the last date modified of the plugin
-        /// </summary>
-        /// <value>The assembly date last modified.</value>
-        public DateTime AssemblyDateLastModified
-        {
-            get
-            {
-                return File.GetLastWriteTimeUtc(AssemblyFilePath);
+                return _dateModifiedFn(ConfigurationFilePath);
             }
         }
 
@@ -152,22 +111,12 @@ namespace MediaBrowser.Common.Plugins
         /// Gets the path to the assembly file
         /// </summary>
         /// <value>The assembly file path.</value>
-        public string AssemblyFilePath
-        {
-            get
-            {
-                return Path.Combine(ApplicationPaths.PluginsPath, AssemblyFileName);
-            }
-        }
+        public string AssemblyFilePath { get; private set; }
 
         /// <summary>
         /// The _configuration sync lock
         /// </summary>
-        private object _configurationSyncLock = new object();
-        /// <summary>
-        /// The _configuration initialized
-        /// </summary>
-        private bool _configurationInitialized;
+        private readonly object _configurationSyncLock = new object();
         /// <summary>
         /// The _configuration
         /// </summary>
@@ -181,17 +130,35 @@ namespace MediaBrowser.Common.Plugins
             get
             {
                 // Lazy load
-                LazyInitializer.EnsureInitialized(ref _configuration, ref _configurationInitialized, ref _configurationSyncLock, () => ConfigurationHelper.GetXmlConfiguration(ConfigurationType, ConfigurationFilePath, XmlSerializer) as TConfigurationType);
+                if (_configuration == null)
+                {
+                    lock (_configurationSyncLock)
+                    {
+                        if (_configuration == null)
+                        {
+                            _configuration = LoadConfiguration();
+                        }
+                    }
+                } 
                 return _configuration;
             }
             protected set
             {
                 _configuration = value;
+            }
+        }
 
-                if (value == null)
-                {
-                    _configurationInitialized = false;
-                }
+        private TConfigurationType LoadConfiguration()
+        {
+            var path = ConfigurationFilePath;
+
+            try
+            {
+                return (TConfigurationType)XmlSerializer.DeserializeFromFile(typeof(TConfigurationType), path);
+            }
+            catch
+            {
+                return (TConfigurationType)Activator.CreateInstance(typeof(TConfigurationType));
             }
         }
 
@@ -217,10 +184,6 @@ namespace MediaBrowser.Common.Plugins
         }
 
         /// <summary>
-        /// The _data folder path
-        /// </summary>
-        private string _dataFolderPath;
-        /// <summary>
         /// Gets the full path to the data folder, where the plugin can store any miscellaneous files needed
         /// </summary>
         /// <value>The data folder path.</value>
@@ -228,19 +191,9 @@ namespace MediaBrowser.Common.Plugins
         {
             get
             {
-                if (_dataFolderPath == null)
-                {
-                    // Give the folder name the same name as the config file name
-                    // We can always make this configurable if/when needed
-                    _dataFolderPath = Path.Combine(ApplicationPaths.PluginsPath, Path.GetFileNameWithoutExtension(ConfigurationFileName));
-
-                    if (!Directory.Exists(_dataFolderPath))
-                    {
-                        Directory.CreateDirectory(_dataFolderPath);
-                    }
-                }
-
-                return _dataFolderPath;
+                // Give the folder name the same name as the config file name
+                // We can always make this configurable if/when needed
+                return Path.Combine(ApplicationPaths.PluginsPath, Path.GetFileNameWithoutExtension(ConfigurationFileName));
             }
         }
 
@@ -253,8 +206,6 @@ namespace MediaBrowser.Common.Plugins
         {
             ApplicationPaths = applicationPaths;
             XmlSerializer = xmlSerializer;
-
-            IsFirstRun = !File.Exists(ConfigurationFilePath);
         }
 
         /// <summary>
@@ -269,6 +220,8 @@ namespace MediaBrowser.Common.Plugins
         {
             lock (_configurationSaveLock)
             {
+                _directoryCreateFn(Path.GetDirectoryName(ConfigurationFilePath));
+                
                 XmlSerializer.SerializeToFile(Configuration, ConfigurationFilePath);
             }
         }
@@ -285,7 +238,7 @@ namespace MediaBrowser.Common.Plugins
             {
                 throw new ArgumentNullException("configuration");
             }
-            
+
             Configuration = (TConfigurationType)configuration;
 
             SaveConfiguration();
@@ -304,9 +257,7 @@ namespace MediaBrowser.Common.Plugins
                 AssemblyFileName = AssemblyFileName,
                 ConfigurationDateLastModified = ConfigurationDateLastModified,
                 Description = Description,
-                Id = Id.ToString("N"),
-                EnableAutoUpdate = Configuration.EnableAutoUpdate,
-                UpdateClass = Configuration.UpdateClass,
+                Id = Id.ToString(),
                 ConfigurationFileName = ConfigurationFileName
             };
 
@@ -318,7 +269,7 @@ namespace MediaBrowser.Common.Plugins
         /// </summary>
         public virtual void OnUninstalling()
         {
-            
+
         }
 
         /// <summary>
@@ -329,5 +280,10 @@ namespace MediaBrowser.Common.Plugins
         {
             get { return Configuration; }
         }
+    }
+
+    public interface IPluginAssembly
+    {
+        void SetAttributes(string assemblyFilePath, string assemblyFileName, Version assemblyVersion, Guid assemblyId);
     }
 }

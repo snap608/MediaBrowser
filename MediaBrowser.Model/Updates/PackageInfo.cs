@@ -9,6 +9,12 @@ namespace MediaBrowser.Model.Updates
     public class PackageInfo
     {
         /// <summary>
+        /// The internal id of this package.
+        /// </summary>
+        /// <value>The id.</value>
+        public string id { get; set; }
+
+        /// <summary>
         /// Gets or sets the name.
         /// </summary>
         /// <value>The name.</value>
@@ -33,6 +39,12 @@ namespace MediaBrowser.Model.Updates
         public bool isPremium { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether this instance is adult only content.
+        /// </summary>
+        /// <value><c>true</c> if this instance is adult; otherwise, <c>false</c>.</value>
+        public bool adult { get; set; }
+
+        /// <summary>
         /// Gets or sets the rich desc URL.
         /// </summary>
         /// <value>The rich desc URL.</value>
@@ -54,7 +66,7 @@ namespace MediaBrowser.Model.Updates
         /// Gets or sets the type.
         /// </summary>
         /// <value>The type.</value>
-        public PackageType type { get; set; }
+        public string type { get; set; }
 
         /// <summary>
         /// Gets or sets the target filename.
@@ -105,6 +117,25 @@ namespace MediaBrowser.Model.Updates
         public PackageTargetSystem targetSystem { get; set; }
 
         /// <summary>
+        /// The guid of the assembly associated with this package (if a plug-in).
+        /// This is used to identify the proper item for automatic updates.
+        /// </summary>
+        /// <value>The name.</value>
+        public string guid { get; set; }
+
+        /// <summary>
+        /// Gets or sets the total number of ratings for this package.
+        /// </summary>
+        /// <value>The total ratings.</value>
+        public int? totalRatings { get; set; }
+
+        /// <summary>
+        /// Gets or sets the average rating for this package .
+        /// </summary>
+        /// <value>The rating.</value>
+        public float avgRating { get; set; }
+
+        /// <summary>
         /// Gets or sets whether or not this package is registered.
         /// </summary>
         /// <value>True if registered.</value>
@@ -122,6 +153,18 @@ namespace MediaBrowser.Model.Updates
         /// <value>The versions.</value>
         public List<PackageVersionInfo> versions { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether [enable in application store].
+        /// </summary>
+        /// <value><c>true</c> if [enable in application store]; otherwise, <c>false</c>.</value>
+        public bool enableInAppStore { get; set; }
+
+        /// <summary>
+        /// Gets or sets the installs.
+        /// </summary>
+        /// <value>The installs.</value>
+        public int installs { get; set; }
+        
         /// <summary>
         /// Initializes a new instance of the <see cref="PackageInfo"/> class.
         /// </summary>

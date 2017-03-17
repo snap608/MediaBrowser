@@ -44,6 +44,12 @@ namespace MediaBrowser.Model.Querying
         public ItemFields[] Fields { get; set; }
 
         /// <summary>
+        /// Gets or sets the filters.
+        /// </summary>
+        /// <value>The filters.</value>
+        public ItemFilter[] Filters { get; set; }
+
+        /// <summary>
         /// Gets or sets the exclude item types.
         /// </summary>
         /// <value>The exclude item types.</value>
@@ -68,16 +74,63 @@ namespace MediaBrowser.Model.Querying
         public string[] SortBy { get; set; }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ItemsByNameQuery"/> class.
+        /// Gets or sets the image types.
+        /// </summary>
+        /// <value>The image types.</value>
+        public ImageType[] ImageTypes { get; set; }
+
+        /// <summary>
+        /// Gets or sets the name starts with or greater.
+        /// </summary>
+        /// <value>The name starts with or greater.</value>
+        public string NameStartsWithOrGreater { get; set; }
+
+        /// <summary>
+        /// Gets or sets the name starts with
+        /// </summary>
+        /// <value>The name starts with or greater.</value>
+        public string NameStartsWith { get; set; }
+        /// <summary>
+        /// Gets or sets the name less than.
+        /// </summary>
+        /// <value>The name less than.</value>
+        public string NameLessThan { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this instance is played.
+        /// </summary>
+        /// <value><c>null</c> if [is played] contains no value, <c>true</c> if [is played]; otherwise, <c>false</c>.</value>
+        public bool? IsPlayed { get; set; }
+        /// <summary>
+        /// Gets or sets a value indicating whether [enable images].
+        /// </summary>
+        /// <value><c>null</c> if [enable images] contains no value, <c>true</c> if [enable images]; otherwise, <c>false</c>.</value>
+        public bool? EnableImages { get; set; }
+        /// <summary>
+        /// Gets or sets the image type limit.
+        /// </summary>
+        /// <value>The image type limit.</value>
+        public int? ImageTypeLimit { get; set; }
+        /// <summary>
+        /// Gets or sets the enable image types.
+        /// </summary>
+        /// <value>The enable image types.</value>
+        public ImageType[] EnableImageTypes { get; set; }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ItemsByNameQuery" /> class.
         /// </summary>
         public ItemsByNameQuery()
         {
-            Fields = new ItemFields[] {};
+            ImageTypes = new ImageType[] { };
+            Filters = new ItemFilter[] { };
+            Fields = new ItemFields[] { };
             Recursive = true;
             MediaTypes = new string[] { };
             SortBy = new string[] { };
             ExcludeItemTypes = new string[] { };
             IncludeItemTypes = new string[] { };
+            EnableImageTypes = new ImageType[] { };
         }
     }
 }

@@ -1,23 +1,19 @@
 ﻿using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Net;
 using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Model.Dto;
-using MediaBrowser.Model.Querying;
-using ServiceStack.ServiceHost;
-using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Threading.Tasks;
+using MediaBrowser.Model.Services;
 
 namespace MediaBrowser.Api.UserLibrary
 {
     /// <summary>
     /// Class GetYears
     /// </summary>
-    [Route("/Years", "GET")]
-    [Api(Description = "Gets all years from a given item, folder, or the entire library")]
+    [Route("/Years", "GET", Summary = "Gets all years from a given item, folder, or the entire library")]
     public class GetYears : GetItemsByName
     {
     }
@@ -25,8 +21,7 @@ namespace MediaBrowser.Api.UserLibrary
     /// <summary>
     /// Class GetYear
     /// </summary>
-    [Route("/Years/{Year}", "GET")]
-    [Api(Description = "Gets a year")]
+    [Route("/Years/{Year}", "GET", Summary = "Gets a year")]
     public class GetYear : IReturn<BaseItemDto>
     {
         /// <summary>
@@ -41,24 +36,15 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "Optional. Filter by user id, and attach user data", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public Guid? UserId { get; set; }
+        public string UserId { get; set; }
     }
 
     /// <summary>
     /// Class YearsService
     /// </summary>
+    [Authenticated]
     public class YearsService : BaseItemsByNameService<Year>
     {
-        /// <summary>
-        /// The us culture
-        /// </summary>
-        private static readonly CultureInfo UsCulture = new CultureInfo("en-US");
-
-        public YearsService(IUserManager userManager, ILibraryManager libraryManager, IUserDataRepository userDataRepository)
-            : base(userManager, libraryManager, userDataRepository)
-        {
-        }
-
         /// <summary>
         /// Gets the specified request.
         /// </summary>
@@ -66,9 +52,9 @@ namespace MediaBrowser.Api.UserLibrary
         /// <returns>System.Object.</returns>
         public object Get(GetYear request)
         {
-            var result = GetItem(request).Result;
+            var result = GetItem(request);
 
-            return ToOptimizedResult(result);
+            return ToOptimizedSerializedResultUsingCache(result);
         }
 
         /// <summary>
@@ -76,23 +62,20 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <param name="request">The request.</param>
         /// <returns>Task{BaseItemDto}.</returns>
-        private async Task<BaseItemDto> GetItem(GetYear request)
+        private BaseItemDto GetItem(GetYear request)
         {
-            var item = await LibraryManager.GetYear(request.Year).ConfigureAwait(false);
+            var item = LibraryManager.GetYear(request.Year);
+            
+            var dtoOptions = GetDtoOptions(AuthorizationContext, request);
 
-            // Get everything
-            var fields = Enum.GetNames(typeof(ItemFields)).Select(i => (ItemFields)Enum.Parse(typeof(ItemFields), i, true));
-
-            var builder = new DtoBuilder(Logger, LibraryManager, UserDataRepository);
-
-            if (request.UserId.HasValue)
+            if (!string.IsNullOrWhiteSpace(request.UserId))
             {
-                var user = UserManager.GetUserById(request.UserId.Value);
+                var user = UserManager.GetUserById(request.UserId);
 
-                return await builder.GetBaseItemDto(item, fields.ToList(), user).ConfigureAwait(false);
+                return DtoService.GetBaseItemDto(item, dtoOptions, user);
             }
 
-            return await builder.GetBaseItemDto(item, fields.ToList()).ConfigureAwait(false);
+            return DtoService.GetBaseItemDto(item, dtoOptions);
         }
 
         /// <summary>
@@ -102,9 +85,9 @@ namespace MediaBrowser.Api.UserLibrary
         /// <returns>System.Object.</returns>
         public object Get(GetYears request)
         {
-            var result = GetResult(request).Result;
+            var result = GetResult(request);
 
-            return ToOptimizedResult(result);
+            return ToOptimizedSerializedResultUsingCache(result);
         }
 
         /// <summary>
@@ -113,24 +96,19 @@ namespace MediaBrowser.Api.UserLibrary
         /// <param name="request">The request.</param>
         /// <param name="items">The items.</param>
         /// <returns>IEnumerable{Tuple{System.StringFunc{System.Int32}}}.</returns>
-        protected override IEnumerable<IbnStub<Year>> GetAllItems(GetItemsByName request, IEnumerable<BaseItem> items)
+        protected override IEnumerable<BaseItem> GetAllItems(GetItemsByName request, IEnumerable<BaseItem> items)
         {
             var itemsList = items.Where(i => i.ProductionYear != null).ToList();
 
             return itemsList
-                .Select(i => i.ProductionYear.Value)
+                .Select(i => i.ProductionYear ?? 0)
+                .Where(i => i > 0)
                 .Distinct()
-                .Select(year => new IbnStub<Year>(year.ToString(UsCulture), () => itemsList.Where(i => i.ProductionYear.HasValue && i.ProductionYear.Value == year), GetEntity));
+                .Select(year => LibraryManager.GetYear(year));
         }
 
-        /// <summary>
-        /// Gets the entity.
-        /// </summary>
-        /// <param name="name">The name.</param>
-        /// <returns>Task{Studio}.</returns>
-        protected Task<Year> GetEntity(string name)
+        public YearsService(IUserManager userManager, ILibraryManager libraryManager, IUserDataManager userDataRepository, IItemRepository itemRepository, IDtoService dtoService, IAuthorizationContext authorizationContext) : base(userManager, libraryManager, userDataRepository, itemRepository, dtoService, authorizationContext)
         {
-            return LibraryManager.GetYear(int.Parse(name, UsCulture));
         }
     }
 }

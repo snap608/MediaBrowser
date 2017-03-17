@@ -11,6 +11,13 @@ namespace MediaBrowser.Controller
         string RootFolderPath { get; }
 
         /// <summary>
+        /// Gets the application resources path. This is the path to the folder containing resources that are deployed as part of the application
+        /// For example, this folder contains dashboard-ui and swagger-ui
+        /// </summary>
+        /// <value>The application resources path.</value>
+        string ApplicationResourcesPath { get; }
+        
+        /// <summary>
         /// Gets the path to the default user view directory.  Used if no specific user view is defined.
         /// </summary>
         /// <value>The default user views path.</value>
@@ -26,7 +33,7 @@ namespace MediaBrowser.Controller
         /// Gets the path to the Images By Name directory
         /// </summary>
         /// <value>The images by name path.</value>
-        string ItemsByNamePath { get; set; }
+        string ItemsByNamePath { get; }
 
         /// <summary>
         /// Gets the path to the People directory
@@ -41,11 +48,17 @@ namespace MediaBrowser.Controller
         string GenrePath { get; }
 
         /// <summary>
-        /// Gets the artists path.
+        /// Gets the music genre path.
         /// </summary>
-        /// <value>The artists path.</value>
-        string ArtistsPath { get; }
-        
+        /// <value>The music genre path.</value>
+        string MusicGenrePath { get; }
+
+        /// <summary>
+        /// Gets the game genre path.
+        /// </summary>
+        /// <value>The game genre path.</value>
+        string GameGenrePath { get; }
+
         /// <summary>
         /// Gets the path to the Studio directory
         /// </summary>
@@ -75,7 +88,7 @@ namespace MediaBrowser.Controller
         /// </summary>
         /// <value>The media info images path.</value>
         string MediaInfoImagesPath { get; }
-        
+
         /// <summary>
         /// Gets the path to the user configuration directory
         /// </summary>
@@ -83,15 +96,17 @@ namespace MediaBrowser.Controller
         string UserConfigurationDirectoryPath { get; }
 
         /// <summary>
-        /// Gets the FF MPEG stream cache path.
+        /// Gets the transcoding temporary path.
         /// </summary>
-        /// <value>The FF MPEG stream cache path.</value>
-        string EncodedMediaCachePath { get; }
+        /// <value>The transcoding temporary path.</value>
+        string TranscodingTempPath { get; }
 
         /// <summary>
-        /// Gets the downloaded images data path.
+        /// Gets the internal metadata path.
         /// </summary>
-        /// <value>The downloaded images data path.</value>
-        string DownloadedImagesDataPath { get; }
+        /// <value>The internal metadata path.</value>
+        string InternalMetadataPath { get; }
+
+        string ArtistsPath { get; }
     }
 }

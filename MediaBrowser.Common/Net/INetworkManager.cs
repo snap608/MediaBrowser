@@ -1,21 +1,20 @@
+using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Net;
 using System.Collections.Generic;
+using System.Net;
+using System.Threading.Tasks;
 
 namespace MediaBrowser.Common.Net
 {
     public interface INetworkManager
     {
         /// <summary>
-        /// Gets the machine's local ip address
-        /// </summary>
-        /// <returns>IPAddress.</returns>
-        IEnumerable<string> GetLocalIpAddresses();
-
-        /// <summary>
         /// Gets a random port number that is currently available
         /// </summary>
         /// <returns>System.Int32.</returns>
-        int GetRandomUnusedPort();
+        int GetRandomUnusedTcpPort();
+
+        int GetRandomUnusedUdpPort();
 
         /// <summary>
         /// Returns MAC Address from first Network Card in Computer
@@ -24,10 +23,11 @@ namespace MediaBrowser.Common.Net
         string GetMacAddress();
 
         /// <summary>
-        /// Gets available devices within the domain
+        /// Determines whether [is in private address space] [the specified endpoint].
         /// </summary>
-        /// <returns>PC's in the Domain</returns>
-        IEnumerable<string> GetNetworkDevices();
+        /// <param name="endpoint">The endpoint.</param>
+        /// <returns><c>true</c> if [is in private address space] [the specified endpoint]; otherwise, <c>false</c>.</returns>
+        bool IsInPrivateAddressSpace(string endpoint);
 
         /// <summary>
         /// Gets the network shares.
@@ -35,19 +35,26 @@ namespace MediaBrowser.Common.Net
         /// <param name="path">The path.</param>
         /// <returns>IEnumerable{NetworkShare}.</returns>
         IEnumerable<NetworkShare> GetNetworkShares(string path);
-    }
-    /// <summary>
-    /// Enum NetworkProtocol
-    /// </summary>
-    public enum NetworkProtocol
-    {
+
         /// <summary>
-        /// The TCP
+        /// Gets available devices within the domain
         /// </summary>
-        Tcp,
+        /// <returns>PC's in the Domain</returns>
+        IEnumerable<FileSystemEntryInfo> GetNetworkDevices();
+
         /// <summary>
-        /// The UDP
+        /// Determines whether [is in local network] [the specified endpoint].
         /// </summary>
-        Udp
+        /// <param name="endpoint">The endpoint.</param>
+        /// <returns><c>true</c> if [is in local network] [the specified endpoint]; otherwise, <c>false</c>.</returns>
+        bool IsInLocalNetwork(string endpoint);
+
+        List<IpAddressInfo> GetLocalIpAddresses();
+
+        IpAddressInfo ParseIpAddress(string ipAddress);
+
+        bool TryParseIpAddress(string ipAddress, out IpAddressInfo ipAddressInfo);
+
+        Task<IpAddressInfo[]> GetHostAddressesAsync(string host);
     }
 }

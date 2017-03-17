@@ -1,221 +1,80 @@
 ﻿using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
-using MediaBrowser.Controller.Entities.Audio;
-using MediaBrowser.Controller.Entities.Movies;
-using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
-using MediaBrowser.Controller.Localization;
-using MediaBrowser.Controller.Persistence;
+using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Querying;
-using ServiceStack.ServiceHost;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using MediaBrowser.Controller.Entities.Audio;
+using MediaBrowser.Model.Globalization;
+using MediaBrowser.Model.Services;
 
 namespace MediaBrowser.Api.UserLibrary
 {
     /// <summary>
     /// Class GetItems
     /// </summary>
-    [Route("/Users/{UserId}/Items", "GET")]
-    [Api(Description = "Gets items based on a query.")]
+    [Route("/Items", "GET", Summary = "Gets items based on a query.")]
+    [Route("/Users/{UserId}/Items", "GET", Summary = "Gets items based on a query.")]
     public class GetItems : BaseItemsRequest, IReturn<ItemsResult>
     {
-        /// <summary>
-        /// Gets or sets the user id.
-        /// </summary>
-        /// <value>The user id.</value>
-        [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public Guid UserId { get; set; }
-
-        /// <summary>
-        /// Limit results to items containing a specific person
-        /// </summary>
-        /// <value>The person.</value>
-        [ApiMember(Name = "Person", Description = "Optional. If specified, results will be filtered to include only those containing the specified person.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public string Person { get; set; }
-
-        /// <summary>
-        /// What to sort the results by
-        /// </summary>
-        /// <value>The sort by.</value>
-        [ApiMember(Name = "SortBy", Description = "Optional. Specify one or more sort orders, comma delimeted. Options: Album, AlbumArtist, Artist, Budget, CommunityRating, CriticRating, DateCreated, DatePlayed, PlayCount, PremiereDate, ProductionYear, SortName, Random, Revenue, Runtime", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string SortBy { get; set; }
-
-        /// <summary>
-        /// If the Person filter is used, this can also be used to restrict to a specific person type
-        /// </summary>
-        /// <value>The type of the person.</value>
-        [ApiMember(Name = "PersonTypes", Description = "Optional. If specified, along with Person, results will be filtered to include only those containing the specified person and PersonType. Allows multiple, comma-delimited", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public string PersonTypes { get; set; }
-
-        /// <summary>
-        /// Search characters used to find items
-        /// </summary>
-        /// <value>The index by.</value>
-        [ApiMember(Name = "SearchTerm", Description = "Optional. If specified, results will be filtered based on a search term.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public string SearchTerm { get; set; }
-
-        /// <summary>
-        /// The dynamic, localized index function name
-        /// </summary>
-        /// <value>The index by.</value>
-        public string IndexBy { get; set; }
-
-        /// <summary>
-        /// Limit results to items containing specific genres
-        /// </summary>
-        /// <value>The genres.</value>
-        [ApiMember(Name = "Genres", Description = "Optional. If specified, results will be filtered based on genre. This allows multiple, comma delimeted.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string Genres { get; set; }
-
-        /// <summary>
-        /// Limit results to items containing specific studios
-        /// </summary>
-        /// <value>The studios.</value>
-        [ApiMember(Name = "Studios", Description = "Optional. If specified, results will be filtered based on studio. This allows multiple, comma delimeted.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string Studios { get; set; }
-
-        /// <summary>
-        /// Gets or sets the studios.
-        /// </summary>
-        /// <value>The studios.</value>
-        [ApiMember(Name = "Artists", Description = "Optional. If specified, results will be filtered based on studio. This allows multiple, pipe delimeted.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string Artists { get; set; }
-
-        /// <summary>
-        /// Limit results to items containing specific years
-        /// </summary>
-        /// <value>The years.</value>
-        [ApiMember(Name = "Years", Description = "Optional. If specified, results will be filtered based on production year. This allows multiple, comma delimeted.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string Years { get; set; }
-
-        /// <summary>
-        /// Gets or sets the image types.
-        /// </summary>
-        /// <value>The image types.</value>
-        [ApiMember(Name = "ImageTypes", Description = "Optional. If specified, results will be filtered based on those containing image types. This allows multiple, comma delimited.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string ImageTypes { get; set; }
-
-        /// <summary>
-        /// Gets or sets the item ids.
-        /// </summary>
-        /// <value>The item ids.</value>
-        [ApiMember(Name = "Ids", Description = "Optional. If specific items are needed, specify a list of item id's to retrieve. This allows multiple, comma delimited.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string Ids { get; set; }
-
-        /// <summary>
-        /// Gets or sets the video types.
-        /// </summary>
-        /// <value>The video types.</value>
-        [ApiMember(Name = "VideoTypes", Description = "Optional filter by VideoType (videofile, dvd, bluray, iso). Allows multiple, comma delimeted.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string VideoTypes { get; set; }
-
-        /// <summary>
-        /// Gets or sets the video formats.
-        /// </summary>
-        /// <value>The video formats.</value>
-        [ApiMember(Name = "VideoFormats", Description = "Optional filter by VideoFormat (Standard, Digital3D, Sbs3D). Allows multiple, comma delimeted.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string VideoFormats { get; set; }
-
-        /// <summary>
-        /// Gets or sets the series status.
-        /// </summary>
-        /// <value>The series status.</value>
-        [ApiMember(Name = "SeriesStatus", Description = "Optional filter by Series Status. Allows multiple, comma delimeted.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string SeriesStatus { get; set; }
-
-        [ApiMember(Name = "NameStartsWithOrGreater", Description = "Optional filter by items whose name is sorted equally or greater than a given input string.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public string NameStartsWithOrGreater { get; set; }
-
-        /// <summary>
-        /// Gets or sets the air days.
-        /// </summary>
-        /// <value>The air days.</value>
-        [ApiMember(Name = "AirDays", Description = "Optional filter by Series Air Days. Allows multiple, comma delimeted.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string AirDays { get; set; }
-
-        /// <summary>
-        /// Gets or sets the min offical rating.
-        /// </summary>
-        /// <value>The min offical rating.</value>
-        [ApiMember(Name = "MinOfficialRating", Description = "Optional filter by minimum official rating (PG, PG-13, TV-MA, etc).", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public string MinOfficialRating { get; set; }
-
-        /// <summary>
-        /// Gets or sets the max offical rating.
-        /// </summary>
-        /// <value>The max offical rating.</value>
-        [ApiMember(Name = "MaxOfficialRating", Description = "Optional filter by maximum official rating (PG, PG-13, TV-MA, etc).", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public string MaxOfficialRating { get; set; }
-
-        [ApiMember(Name = "HasThemeSong", Description = "Optional filter by items with theme songs.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public bool? HasThemeSong { get; set; }
-
-        [ApiMember(Name = "HasThemeVideo", Description = "Optional filter by items with theme videos.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public bool? HasThemeVideo { get; set; }
-
-        [ApiMember(Name = "HasSubtitles", Description = "Optional filter by items with subtitles.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public bool? HasSubtitles { get; set; }
-
-        [ApiMember(Name = "HasSpecialFeature", Description = "Optional filter by items with special features.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public bool? HasSpecialFeature { get; set; }
-
-        [ApiMember(Name = "HasTrailer", Description = "Optional filter by items with trailers.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public bool? HasTrailer { get; set; }
-
-        [ApiMember(Name = "AdjacentTo", Description = "Optional. Return items that are siblings of a supplied item.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public string AdjacentTo { get; set; }
-
-        /// <summary>
-        /// Gets the order by.
-        /// </summary>
-        /// <returns>IEnumerable{ItemSortBy}.</returns>
-        public IEnumerable<string> GetOrderBy()
-        {
-            var val = SortBy;
-
-            if (string.IsNullOrEmpty(val))
-            {
-                return new string[] { };
-            }
-
-            return val.Split(',');
-        }
     }
 
     /// <summary>
     /// Class ItemsService
     /// </summary>
+    [Authenticated]
     public class ItemsService : BaseApiService
     {
         /// <summary>
         /// The _user manager
         /// </summary>
         private readonly IUserManager _userManager;
-        private readonly IUserDataRepository _userDataRepository;
 
         /// <summary>
         /// The _library manager
         /// </summary>
         private readonly ILibraryManager _libraryManager;
-        private readonly ILibrarySearchEngine _searchEngine;
+        private readonly ILocalizationManager _localization;
+
+        private readonly IDtoService _dtoService;
+        private readonly IAuthorizationContext _authContext;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ItemsService" /> class.
         /// </summary>
         /// <param name="userManager">The user manager.</param>
         /// <param name="libraryManager">The library manager.</param>
-        /// <param name="searchEngine">The search engine.</param>
-        /// <param name="userDataRepository">The user data repository.</param>
-        public ItemsService(IUserManager userManager, ILibraryManager libraryManager, ILibrarySearchEngine searchEngine, IUserDataRepository userDataRepository)
+        /// <param name="localization">The localization.</param>
+        /// <param name="dtoService">The dto service.</param>
+        public ItemsService(IUserManager userManager, ILibraryManager libraryManager, ILocalizationManager localization, IDtoService dtoService, IAuthorizationContext authContext)
         {
+            if (userManager == null)
+            {
+                throw new ArgumentNullException("userManager");
+            }
+            if (libraryManager == null)
+            {
+                throw new ArgumentNullException("libraryManager");
+            }
+            if (localization == null)
+            {
+                throw new ArgumentNullException("localization");
+            }
+            if (dtoService == null)
+            {
+                throw new ArgumentNullException("dtoService");
+            }
+
             _userManager = userManager;
             _libraryManager = libraryManager;
-            _searchEngine = searchEngine;
-            _userDataRepository = userDataRepository;
+            _localization = localization;
+            _dtoService = dtoService;
+            _authContext = authContext;
         }
 
         /// <summary>
@@ -223,11 +82,16 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <param name="request">The request.</param>
         /// <returns>System.Object.</returns>
-        public object Get(GetItems request)
+        public async Task<object> Get(GetItems request)
         {
-            var result = GetItems(request).Result;
+            if (request == null)
+            {
+                throw new ArgumentNullException("request");
+            }
 
-            return ToOptimizedResult(result);
+            var result = await GetItems(request).ConfigureAwait(false);
+
+            return ToOptimizedSerializedResultUsingCache(result);
         }
 
         /// <summary>
@@ -237,471 +101,308 @@ namespace MediaBrowser.Api.UserLibrary
         /// <returns>Task{ItemsResult}.</returns>
         private async Task<ItemsResult> GetItems(GetItems request)
         {
-            var user = _userManager.GetUserById(request.UserId);
+            var user = !string.IsNullOrWhiteSpace(request.UserId) ? _userManager.GetUserById(request.UserId) : null;
 
-            var items = GetItemsToSerialize(request, user);
+            var dtoOptions = GetDtoOptions(_authContext, request);
 
-            items = items.AsParallel();
+            var result = await GetQueryResult(request, dtoOptions, user).ConfigureAwait(false);
 
-            items = ApplyAdditionalFilters(request, items, user);
-
-            // Apply filters
-            // Run them starting with the ones that are likely to reduce the list the most
-            foreach (var filter in request.GetFilters().OrderByDescending(f => (int)f))
+            if (result == null)
             {
-                items = ApplyFilter(items, filter, user, _userDataRepository);
+                throw new InvalidOperationException("GetItemsToSerialize returned null");
             }
 
-            items = items.AsEnumerable();
+            if (result.Items == null)
+            {
+                throw new InvalidOperationException("GetItemsToSerialize result.Items returned null");
+            }
 
-            items = ApplySearchTerm(request, items);
+            var dtoList = await _dtoService.GetBaseItemDtos(result.Items, dtoOptions, user).ConfigureAwait(false);
 
-            items = ApplySortOrder(request, items, user, _libraryManager);
-
-            var itemsArray = items.ToArray();
-
-            var pagedItems = ApplyPaging(request, itemsArray);
-
-            var fields = request.GetItemFields().ToList();
-
-            var dtoBuilder = new DtoBuilder(Logger, _libraryManager, _userDataRepository);
-
-            var returnItems = await Task.WhenAll(pagedItems.Select(i => dtoBuilder.GetBaseItemDto(i, fields, user))).ConfigureAwait(false);
+            if (dtoList == null)
+            {
+                throw new InvalidOperationException("GetBaseItemDtos returned null");
+            }
 
             return new ItemsResult
             {
-                TotalRecordCount = itemsArray.Length,
-                Items = returnItems
+                TotalRecordCount = result.TotalRecordCount,
+                Items = dtoList.ToArray()
             };
         }
 
         /// <summary>
         /// Gets the items to serialize.
         /// </summary>
-        /// <param name="request">The request.</param>
-        /// <param name="user">The user.</param>
-        /// <returns>IEnumerable{BaseItem}.</returns>
-        /// <exception cref="System.InvalidOperationException"></exception>
-        private IEnumerable<BaseItem> GetItemsToSerialize(GetItems request, User user)
+        private async Task<QueryResult<BaseItem>> GetQueryResult(GetItems request, DtoOptions dtoOptions, User user)
         {
-            var item = string.IsNullOrEmpty(request.ParentId) ? user.RootFolder : DtoBuilder.GetItemByClientId(request.ParentId, _userManager, _libraryManager, user.Id);
+            var item = string.IsNullOrEmpty(request.ParentId) ?
+                null :
+                _libraryManager.GetItemById(request.ParentId);
+
+            if (string.Equals(request.IncludeItemTypes, "Playlist", StringComparison.OrdinalIgnoreCase))
+            {
+                if (item == null || user != null)
+                {
+                    item = _libraryManager.RootFolder.Children.OfType<Folder>().FirstOrDefault(i => string.Equals(i.GetType().Name, "PlaylistsFolder", StringComparison.OrdinalIgnoreCase));
+                }
+            }
+            else if (string.Equals(request.IncludeItemTypes, "BoxSet", StringComparison.OrdinalIgnoreCase))
+            {
+                item = user == null ? _libraryManager.RootFolder : user.RootFolder;
+            }
+
+            if (item == null)
+            {
+                item = string.IsNullOrEmpty(request.ParentId) ?
+                    user == null ? _libraryManager.RootFolder : user.RootFolder :
+                    _libraryManager.GetItemById(request.ParentId);
+            }
 
             // Default list type = children
 
-            if (!string.IsNullOrEmpty(request.Ids))
+            var folder = item as Folder;
+            if (folder == null)
             {
-                var idList = request.Ids.Split(',').ToList();
-
-                return idList.Select(i => DtoBuilder.GetItemByClientId(i, _userManager, _libraryManager, user.Id));
+                folder = user == null ? _libraryManager.RootFolder : _libraryManager.GetUserRootFolder();
             }
 
-            if (request.Recursive)
+            if (request.Recursive || !string.IsNullOrEmpty(request.Ids) || user == null)
             {
-                return ((Folder)item).GetRecursiveChildren(user);
+                return await folder.GetItems(GetItemsQuery(request, dtoOptions, user)).ConfigureAwait(false);
             }
 
-            return ((Folder)item).GetChildren(user, request.IndexBy);
-        }
+            var userRoot = item as UserRootFolder;
 
-        /// <summary>
-        /// Applies sort order
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <param name="items">The items.</param>
-        /// <param name="user">The user.</param>
-        /// <param name="libraryManager">The library manager.</param>
-        /// <returns>IEnumerable{BaseItem}.</returns>
-        internal static IEnumerable<BaseItem> ApplySortOrder(GetItems request, IEnumerable<BaseItem> items, User user, ILibraryManager libraryManager)
-        {
-            var orderBy = request.GetOrderBy().ToArray();
-
-            return orderBy.Length == 0 ? items : libraryManager.Sort(items, user, orderBy, request.SortOrder ?? SortOrder.Ascending);
-        }
-
-        /// <summary>
-        /// Applies filtering
-        /// </summary>
-        /// <param name="items">The items.</param>
-        /// <param name="filter">The filter.</param>
-        /// <param name="user">The user.</param>
-        /// <param name="repository">The repository.</param>
-        /// <returns>IEnumerable{BaseItem}.</returns>
-        internal static IEnumerable<BaseItem> ApplyFilter(IEnumerable<BaseItem> items, ItemFilter filter, User user, IUserDataRepository repository)
-        {
-            switch (filter)
+            if (userRoot == null)
             {
-                case ItemFilter.Likes:
-                    return items.Where(item =>
-                    {
-                        var userdata = repository.GetUserData(user.Id, item.GetUserDataKey()).Result;
-
-                        return userdata != null && userdata.Likes.HasValue && userdata.Likes.Value;
-                    });
-
-                case ItemFilter.Dislikes:
-                    return items.Where(item =>
-                    {
-                        var userdata = repository.GetUserData(user.Id, item.GetUserDataKey()).Result;
-
-                        return userdata != null && userdata.Likes.HasValue && !userdata.Likes.Value;
-                    });
-
-                case ItemFilter.IsFavorite:
-                    return items.Where(item =>
-                    {
-                        var userdata = repository.GetUserData(user.Id, item.GetUserDataKey()).Result;
-
-                        return userdata != null && userdata.IsFavorite;
-                    });
-
-                case ItemFilter.IsRecentlyAdded:
-                    return items.Where(item => item.IsRecentlyAdded());
-
-                case ItemFilter.IsResumable:
-                    return items.Where(item =>
-                    {
-                        var userdata = repository.GetUserData(user.Id, item.GetUserDataKey()).Result;
-
-                        return userdata != null && userdata.PlaybackPositionTicks > 0;
-                    });
-
-                case ItemFilter.IsPlayed:
-                    return items.Where(item =>
-                    {
-                        var userdata = repository.GetUserData(user.Id, item.GetUserDataKey()).Result;
-
-                        return userdata != null && userdata.Played;
-                    });
-
-                case ItemFilter.IsUnplayed:
-                    return items.Where(item =>
-                    {
-                        var userdata = repository.GetUserData(user.Id, item.GetUserDataKey()).Result;
-
-                        return userdata == null || !userdata.Played;
-                    });
-
-                case ItemFilter.IsFolder:
-                    return items.Where(item => item.IsFolder);
-
-                case ItemFilter.IsNotFolder:
-                    return items.Where(item => !item.IsFolder);
+                return await folder.GetItems(GetItemsQuery(request, dtoOptions, user)).ConfigureAwait(false);
             }
 
-            return items;
+            IEnumerable<BaseItem> items = folder.GetChildren(user, true);
+
+            var itemsArray = items.ToArray();
+
+            return new QueryResult<BaseItem>
+            {
+                Items = itemsArray,
+                TotalRecordCount = itemsArray.Length
+            };
         }
 
-        /// <summary>
-        /// Applies the additional filters.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <param name="items">The items.</param>
-        /// <returns>IEnumerable{BaseItem}.</returns>
-        private IEnumerable<BaseItem> ApplyAdditionalFilters(GetItems request, IEnumerable<BaseItem> items, User user)
+        private InternalItemsQuery GetItemsQuery(GetItems request, DtoOptions dtoOptions, User user)
         {
-            // Artists
-            if (!string.IsNullOrEmpty(request.Artists))
+            var query = new InternalItemsQuery(user)
             {
-                var artists = request.Artists.Split('|');
+                IsPlayed = request.IsPlayed,
+                MediaTypes = request.GetMediaTypes(),
+                IncludeItemTypes = request.GetIncludeItemTypes(),
+                ExcludeItemTypes = request.GetExcludeItemTypes(),
+                Recursive = request.Recursive,
+                SortBy = request.GetOrderBy(),
+                SortOrder = request.SortOrder ?? SortOrder.Ascending,
 
-                items = items.Where(i =>
+                IsFavorite = request.IsFavorite,
+                Limit = request.Limit,
+                StartIndex = request.StartIndex,
+                IsMissing = request.IsMissing,
+                IsVirtualUnaired = request.IsVirtualUnaired,
+                IsUnaired = request.IsUnaired,
+                CollapseBoxSetItems = request.CollapseBoxSetItems,
+                NameLessThan = request.NameLessThan,
+                NameStartsWith = request.NameStartsWith,
+                NameStartsWithOrGreater = request.NameStartsWithOrGreater,
+                HasImdbId = request.HasImdbId,
+                IsPlaceHolder = request.IsPlaceHolder,
+                IsLocked = request.IsLocked,
+                IsInBoxSet = request.IsInBoxSet,
+                IsHD = request.IsHD,
+                Is3D = request.Is3D,
+                HasTvdbId = request.HasTvdbId,
+                HasTmdbId = request.HasTmdbId,
+                HasOverview = request.HasOverview,
+                HasOfficialRating = request.HasOfficialRating,
+                HasParentalRating = request.HasParentalRating,
+                HasSpecialFeature = request.HasSpecialFeature,
+                HasSubtitles = request.HasSubtitles,
+                HasThemeSong = request.HasThemeSong,
+                HasThemeVideo = request.HasThemeVideo,
+                HasTrailer = request.HasTrailer,
+                Tags = request.GetTags(),
+                OfficialRatings = request.GetOfficialRatings(),
+                Genres = request.GetGenres(),
+                ArtistIds = request.GetArtistIds(),
+                GenreIds = request.GetGenreIds(),
+                StudioIds = request.GetStudioIds(),
+                Person = request.Person,
+                PersonIds = request.GetPersonIds(),
+                PersonTypes = request.GetPersonTypes(),
+                Years = request.GetYears(),
+                ImageTypes = request.GetImageTypes().ToArray(),
+                VideoTypes = request.GetVideoTypes().ToArray(),
+                AdjacentTo = request.AdjacentTo,
+                ItemIds = request.GetItemIds(),
+                MinPlayers = request.MinPlayers,
+                MaxPlayers = request.MaxPlayers,
+                MinCommunityRating = request.MinCommunityRating,
+                MinCriticRating = request.MinCriticRating,
+                ParentId = string.IsNullOrWhiteSpace(request.ParentId) ? (Guid?)null : new Guid(request.ParentId),
+                ParentIndexNumber = request.ParentIndexNumber,
+                AiredDuringSeason = request.AiredDuringSeason,
+                AlbumArtistStartsWithOrGreater = request.AlbumArtistStartsWithOrGreater,
+                EnableTotalRecordCount = request.EnableTotalRecordCount,
+                ExcludeItemIds = request.GetExcludeItemIds(),
+                DtoOptions = dtoOptions
+            };
+
+            if (!string.IsNullOrWhiteSpace(request.Ids))
+            {
+                query.CollapseBoxSetItems = false;
+            }
+
+            foreach (var filter in request.GetFilters())
+            {
+                switch (filter)
                 {
-                    var audio = i as Audio;
-
-                    if (audio != null)
-                    {
-                        return artists.Any(audio.HasArtist);
-                    }
-
-                    var album = i as MusicAlbum;
-
-                    if (album != null)
-                    {
-                        return artists.Any(album.HasArtist);
-                    }
-
-                    return false;
-                });
-            }
-
-            if (!string.IsNullOrEmpty(request.AdjacentTo))
-            {
-                var item = DtoBuilder.GetItemByClientId(request.AdjacentTo, _userManager, _libraryManager);
-
-                var allSiblings = item.Parent.GetChildren(user).OrderBy(i => i.SortName).ToList();
-
-                var index = allSiblings.IndexOf(item);
-
-                var previousId = Guid.Empty;
-                var nextId = Guid.Empty;
-
-                if (index > 0)
-                {
-                    previousId = allSiblings[index - 1].Id;
+                    case ItemFilter.Dislikes:
+                        query.IsLiked = false;
+                        break;
+                    case ItemFilter.IsFavorite:
+                        query.IsFavorite = true;
+                        break;
+                    case ItemFilter.IsFavoriteOrLikes:
+                        query.IsFavoriteOrLiked = true;
+                        break;
+                    case ItemFilter.IsFolder:
+                        query.IsFolder = true;
+                        break;
+                    case ItemFilter.IsNotFolder:
+                        query.IsFolder = false;
+                        break;
+                    case ItemFilter.IsPlayed:
+                        query.IsPlayed = true;
+                        break;
+                    case ItemFilter.IsResumable:
+                        query.IsResumable = true;
+                        break;
+                    case ItemFilter.IsUnplayed:
+                        query.IsPlayed = false;
+                        break;
+                    case ItemFilter.Likes:
+                        query.IsLiked = true;
+                        break;
                 }
-
-                if (index < allSiblings.Count - 1)
-                {
-                    nextId = allSiblings[index + 1].Id;
-                }
-
-                items = items.Where(i => i.Id == previousId || i.Id == nextId);
             }
 
-            // Min official rating
-            if (!string.IsNullOrEmpty(request.MinOfficialRating))
+            if (!string.IsNullOrEmpty(request.MinPremiereDate))
             {
-                var level = Ratings.Level(request.MinOfficialRating);
-
-                items = items.Where(i => Ratings.Level(i.CustomRating ?? i.OfficialRating) >= level);
+                query.MinPremiereDate = DateTime.Parse(request.MinPremiereDate, null, DateTimeStyles.RoundtripKind).ToUniversalTime();
             }
 
-            // Max official rating
-            if (!string.IsNullOrEmpty(request.MaxOfficialRating))
+            if (!string.IsNullOrEmpty(request.MaxPremiereDate))
             {
-                var level = Ratings.Level(request.MaxOfficialRating);
-
-                items = items.Where(i => Ratings.Level(i.CustomRating ?? i.OfficialRating) <= level);
-            }
-
-            // Exclude item types
-            if (!string.IsNullOrEmpty(request.ExcludeItemTypes))
-            {
-                var vals = request.ExcludeItemTypes.Split(',');
-                items = items.Where(f => !vals.Contains(f.GetType().Name, StringComparer.OrdinalIgnoreCase));
-            }
-
-            // Include item types
-            if (!string.IsNullOrEmpty(request.IncludeItemTypes))
-            {
-                var vals = request.IncludeItemTypes.Split(',');
-                items = items.Where(f => vals.Contains(f.GetType().Name, StringComparer.OrdinalIgnoreCase));
-            }
-
-            if (!string.IsNullOrEmpty(request.NameStartsWithOrGreater))
-            {
-                items = items.Where(i => string.Compare(request.NameStartsWithOrGreater, i.SortName, StringComparison.CurrentCultureIgnoreCase) < 1);
+                query.MaxPremiereDate = DateTime.Parse(request.MaxPremiereDate, null, DateTimeStyles.RoundtripKind).ToUniversalTime();
             }
 
             // Filter by Series Status
             if (!string.IsNullOrEmpty(request.SeriesStatus))
             {
-                var vals = request.SeriesStatus.Split(',');
-
-                items = items.OfType<Series>().Where(i => i.Status.HasValue && vals.Contains(i.Status.Value.ToString(), StringComparer.OrdinalIgnoreCase));
+                query.SeriesStatuses = request.SeriesStatus.Split(',').Select(d => (SeriesStatus)Enum.Parse(typeof(SeriesStatus), d, true)).ToArray();
             }
 
             // Filter by Series AirDays
             if (!string.IsNullOrEmpty(request.AirDays))
             {
-                var days = request.AirDays.Split(',').Select(d => (DayOfWeek)Enum.Parse(typeof(DayOfWeek), d, true));
-
-                items = items.OfType<Series>().Where(i => i.AirDays != null && days.Any(d => i.AirDays.Contains(d)));
+                query.AirDays = request.AirDays.Split(',').Select(d => (DayOfWeek)Enum.Parse(typeof(DayOfWeek), d, true)).ToArray();
             }
 
-            // Filter by VideoFormat
-            if (!string.IsNullOrEmpty(request.VideoFormats))
+            // ExcludeLocationTypes
+            if (!string.IsNullOrEmpty(request.ExcludeLocationTypes))
             {
-                var formats = request.VideoFormats.Split(',');
-
-                items = items.OfType<Video>().Where(i => formats.Contains(i.VideoFormat.ToString(), StringComparer.OrdinalIgnoreCase));
-            }
-
-            // Filter by VideoType
-            if (!string.IsNullOrEmpty(request.VideoTypes))
-            {
-                var types = request.VideoTypes.Split(',');
-
-                items = items.OfType<Video>().Where(i => types.Contains(i.VideoType.ToString(), StringComparer.OrdinalIgnoreCase));
-            }
-
-            if (!string.IsNullOrEmpty(request.MediaTypes))
-            {
-                var types = request.MediaTypes.Split(',');
-
-                items = items.Where(i => !string.IsNullOrEmpty(i.MediaType) && types.Contains(i.MediaType, StringComparer.OrdinalIgnoreCase));
-            }
-
-            var imageTypes = GetImageTypes(request).ToArray();
-            if (imageTypes.Length > 0)
-            {
-                items = items.Where(item => imageTypes.Any(imageType => HasImage(item, imageType)));
-            }
-
-            var genres = request.Genres;
-
-            // Apply genre filter
-            if (!string.IsNullOrEmpty(genres))
-            {
-                var vals = genres.Split(',');
-                items = items.Where(f => f.Genres != null && vals.Any(v => f.Genres.Contains(v, StringComparer.OrdinalIgnoreCase)));
-            }
-
-            var studios = request.Studios;
-
-            // Apply studio filter
-            if (!string.IsNullOrEmpty(studios))
-            {
-                var vals = studios.Split(',');
-                items = items.Where(f => f.Studios != null && vals.Any(v => f.Studios.Contains(v, StringComparer.OrdinalIgnoreCase)));
-            }
-
-            var years = request.Years;
-
-            // Apply year filter
-            if (!string.IsNullOrEmpty(years))
-            {
-                var vals = years.Split(',').Select(int.Parse);
-                items = items.Where(f => f.ProductionYear.HasValue && vals.Contains(f.ProductionYear.Value));
-            }
-
-            var personName = request.Person;
-
-            // Apply person filter
-            if (!string.IsNullOrEmpty(personName))
-            {
-                var personTypes = request.PersonTypes;
-
-                if (string.IsNullOrEmpty(personTypes))
+                var excludeLocationTypes = request.ExcludeLocationTypes.Split(',').Select(d => (LocationType)Enum.Parse(typeof(LocationType), d, true)).ToArray();
+                if (excludeLocationTypes.Contains(LocationType.Virtual))
                 {
-                    items = items.Where(item => item.People != null && item.People.Any(p => string.Equals(p.Name, personName, StringComparison.OrdinalIgnoreCase)));
-                }
-                else
-                {
-                    var types = personTypes.Split(',');
-
-                    items = items.Where(item =>
-                            item.People != null &&
-                            item.People.Any(p =>
-                                p.Name.Equals(personName, StringComparison.OrdinalIgnoreCase) && types.Contains(p.Type, StringComparer.OrdinalIgnoreCase)));
+                    query.IsVirtualItem = false;
                 }
             }
 
-            if (request.HasTrailer.HasValue)
+            if (!string.IsNullOrEmpty(request.LocationTypes))
             {
-                items = items.Where(i => request.HasTrailer.Value ? i.LocalTrailerIds.Count > 0 : i.LocalTrailerIds.Count == 0);
+                query.LocationTypes = request.LocationTypes.Split(',').Select(d => (LocationType)Enum.Parse(typeof(LocationType), d, true)).ToArray();
             }
 
-            if (request.HasThemeSong.HasValue)
+            // Min official rating
+            if (!string.IsNullOrWhiteSpace(request.MinOfficialRating))
             {
-                items = items.Where(i => request.HasThemeSong.Value ? i.ThemeSongIds.Count > 0 : i.ThemeSongIds.Count == 0);
+                query.MinParentalRating = _localization.GetRatingLevel(request.MinOfficialRating);
             }
 
-            if (request.HasThemeVideo.HasValue)
+            // Max official rating
+            if (!string.IsNullOrWhiteSpace(request.MaxOfficialRating))
             {
-                items = items.Where(i => request.HasThemeVideo.Value ? i.ThemeVideoIds.Count > 0 : i.ThemeVideoIds.Count == 0);
+                query.MaxParentalRating = _localization.GetRatingLevel(request.MaxOfficialRating);
             }
 
-            if (request.HasSpecialFeature.HasValue)
+            // Artists
+            if (!string.IsNullOrEmpty(request.Artists))
             {
-                items = items.OfType<Movie>().Where(i => request.HasSpecialFeature.Value ? i.SpecialFeatureIds.Count > 0 : i.SpecialFeatureIds.Count == 0);
-            }
-
-            if (request.HasSubtitles.HasValue)
-            {
-                items = items.OfType<Video>().Where(i =>
+                query.ArtistIds = request.Artists.Split('|').Select(i =>
                 {
-                    if (request.HasSubtitles.Value)
+                    try
                     {
-                        return i.MediaStreams != null && i.MediaStreams.Any(m => m.Type == MediaStreamType.Subtitle);
+                        return _libraryManager.GetArtist(i);
                     }
-
-                    return i.MediaStreams == null || i.MediaStreams.All(m => m.Type != MediaStreamType.Subtitle);
-                });
+                    catch
+                    {
+                        return null;
+                    }
+                }).Where(i => i != null).Select(i => i.Id.ToString("N")).ToArray();
             }
 
-            return items;
-        }
-
-        /// <summary>
-        /// Determines whether the specified item has image.
-        /// </summary>
-        /// <param name="item">The item.</param>
-        /// <param name="imageType">Type of the image.</param>
-        /// <returns><c>true</c> if the specified item has image; otherwise, <c>false</c>.</returns>
-        private static bool HasImage(BaseItem item, ImageType imageType)
-        {
-            if (imageType == ImageType.Backdrop)
+            // ExcludeArtistIds
+            if (!string.IsNullOrWhiteSpace(request.ExcludeArtistIds))
             {
-                return item.BackdropImagePaths != null && item.BackdropImagePaths.Count > 0;
+                query.ExcludeArtistIds = request.ExcludeArtistIds.Split('|');
             }
 
-            if (imageType == ImageType.Screenshot)
+            if (!string.IsNullOrWhiteSpace(request.AlbumIds))
             {
-                return item.ScreenshotImagePaths != null && item.ScreenshotImagePaths.Count > 0;
+                query.AlbumIds = request.AlbumIds.Split('|');
             }
 
-            if (imageType == ImageType.Chapter)
+            // Albums
+            if (!string.IsNullOrEmpty(request.Albums))
             {
-                var video = item as Video;
-
-                if (video != null)
+                query.AlbumIds = request.Albums.Split('|').Select(i =>
                 {
-                    return video.Chapters != null && video.Chapters.Any(c => !string.IsNullOrEmpty(c.ImagePath));
-                }
+                    return _libraryManager.GetItemList(new InternalItemsQuery
+                    {
+                        IncludeItemTypes = new[] { typeof(MusicAlbum).Name },
+                        Name = i,
+                        Limit = 1
 
-                return false;
+                    }).Select(album => album.Id.ToString("N")).FirstOrDefault();
+
+                }).ToArray();
             }
 
-            return item.HasImage(imageType);
-        }
-
-        /// <summary>
-        /// Applies the search term.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <param name="items">The items.</param>
-        /// <returns>IEnumerable{BaseItem}.</returns>
-        private IEnumerable<BaseItem> ApplySearchTerm(GetItems request, IEnumerable<BaseItem> items)
-        {
-            var term = request.SearchTerm;
-
-            if (!string.IsNullOrEmpty(term))
+            // Studios
+            if (!string.IsNullOrEmpty(request.Studios))
             {
-                items = _searchEngine.Search(items, request.SearchTerm);
+                query.StudioIds = request.Studios.Split('|').Select(i =>
+                {
+                    try
+                    {
+                        return _libraryManager.GetStudio(i);
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                }).Where(i => i != null).Select(i => i.Id.ToString("N")).ToArray();
             }
 
-            return items;
-        }
-
-        /// <summary>
-        /// Applies the paging.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <param name="items">The items.</param>
-        /// <returns>IEnumerable{BaseItem}.</returns>
-        private IEnumerable<BaseItem> ApplyPaging(GetItems request, IEnumerable<BaseItem> items)
-        {
-            // Start at
-            if (request.StartIndex.HasValue)
-            {
-                items = items.Skip(request.StartIndex.Value);
-            }
-
-            // Return limit
-            if (request.Limit.HasValue)
-            {
-                items = items.Take(request.Limit.Value);
-            }
-
-            return items;
-        }
-
-        /// <summary>
-        /// Gets the image types.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>IEnumerable{ImageType}.</returns>
-        private static IEnumerable<ImageType> GetImageTypes(GetItems request)
-        {
-            var val = request.ImageTypes;
-
-            if (string.IsNullOrEmpty(val))
-            {
-                return new ImageType[] { };
-            }
-
-            return val.Split(',').Select(v => (ImageType)Enum.Parse(typeof(ImageType), v, true));
+            return query;
         }
     }
 

@@ -1,41 +1,58 @@
-﻿using MediaBrowser.Common.Net;
+﻿using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Net;
 using MediaBrowser.Controller.Session;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Logging;
-using ServiceStack.Common.Web;
-using ServiceStack.ServiceHost;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using MediaBrowser.Model.Services;
 
 namespace MediaBrowser.Api
 {
     /// <summary>
     /// Class BaseApiService
     /// </summary>
-    [RequestFilter]
-    public class BaseApiService : IHasResultFactory, IRestfulService
+    public class BaseApiService : IService, IRequiresRequest
     {
         /// <summary>
         /// Gets or sets the logger.
         /// </summary>
         /// <value>The logger.</value>
-        public ILogger Logger { get; set; }
+        public ILogger Logger
+        {
+            get
+            {
+                return ApiEntryPoint.Instance.Logger;
+            }
+        }
 
         /// <summary>
         /// Gets or sets the HTTP result factory.
         /// </summary>
         /// <value>The HTTP result factory.</value>
-        public IHttpResultFactory ResultFactory { get; set; }
+        public IHttpResultFactory ResultFactory
+        {
+            get
+            {
+                return ApiEntryPoint.Instance.ResultFactory;
+            }
+        }
 
         /// <summary>
         /// Gets or sets the request context.
         /// </summary>
         /// <value>The request context.</value>
-        public IRequestContext RequestContext { get; set; }
+        public IRequest Request { get; set; }
+
+        public string GetHeader(string name)
+        {
+            return Request.Headers[name];
+        }
 
         /// <summary>
         /// To the optimized result.
@@ -46,304 +63,324 @@ namespace MediaBrowser.Api
         protected object ToOptimizedResult<T>(T result)
             where T : class
         {
-            return ResultFactory.GetOptimizedResult(RequestContext, result);
+            return ResultFactory.GetOptimizedResult(Request, result);
         }
 
-        /// <summary>
-        /// To the optimized result using cache.
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="cacheKey">The cache key.</param>
-        /// <param name="lastDateModified">The last date modified.</param>
-        /// <param name="cacheDuration">Duration of the cache.</param>
-        /// <param name="factoryFn">The factory fn.</param>
-        /// <returns>System.Object.</returns>
-        /// <exception cref="System.ArgumentNullException">cacheKey</exception>
-        protected object ToOptimizedResultUsingCache<T>(Guid cacheKey, DateTime lastDateModified, TimeSpan? cacheDuration, Func<T> factoryFn)
-               where T : class
+        protected void AssertCanUpdateUser(IAuthorizationContext authContext, IUserManager userManager, string userId)
         {
-            return ResultFactory.GetOptimizedResultUsingCache(RequestContext, cacheKey, lastDateModified, cacheDuration, factoryFn);
-        }
+            var auth = authContext.GetAuthorizationInfo(Request);
 
-        /// <summary>
-        /// To the cached result.
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="cacheKey">The cache key.</param>
-        /// <param name="lastDateModified">The last date modified.</param>
-        /// <param name="cacheDuration">Duration of the cache.</param>
-        /// <param name="factoryFn">The factory fn.</param>
-        /// <param name="contentType">Type of the content.</param>
-        /// <returns>System.Object.</returns>
-        /// <exception cref="System.ArgumentNullException">cacheKey</exception>
-        protected object ToCachedResult<T>(Guid cacheKey, DateTime lastDateModified, TimeSpan? cacheDuration, Func<T> factoryFn, string contentType)
-          where T : class
-        {
-            return ResultFactory.GetCachedResult(RequestContext, cacheKey, lastDateModified, cacheDuration, factoryFn, contentType);
-        }
+            var authenticatedUser = userManager.GetUserById(auth.UserId);
 
-        /// <summary>
-        /// To the static file result.
-        /// </summary>
-        /// <param name="path">The path.</param>
-        /// <returns>System.Object.</returns>
-        protected object ToStaticFileResult(string path)
-        {
-            return ResultFactory.GetStaticFileResult(RequestContext, path);
-        }
-
-        private readonly char[] _dashReplaceChars = new[] { '?', '/' };
-        private const char SlugChar = '-';
-
-        protected Task<Artist> GetArtist(string name, ILibraryManager libraryManager)
-        {
-            return libraryManager.GetArtist(DeSlugArtistName(name, libraryManager));
-        }
-
-        protected Task<Studio> GetStudio(string name, ILibraryManager libraryManager)
-        {
-            return libraryManager.GetStudio(DeSlugStudioName(name, libraryManager));
-        }
-
-        protected Task<Genre> GetGenre(string name, ILibraryManager libraryManager)
-        {
-            return libraryManager.GetGenre(DeSlugGenreName(name, libraryManager));
-        }
-
-        protected Task<Person> GetPerson(string name, ILibraryManager libraryManager)
-        {
-            return libraryManager.GetPerson(DeSlugPersonName(name, libraryManager));
-        }
-
-        /// <summary>
-        /// Deslugs an artist name by finding the correct entry in the library
-        /// </summary>
-        /// <param name="name"></param>
-        /// <param name="libraryManager"></param>
-        /// <returns></returns>
-        protected string DeSlugArtistName(string name, ILibraryManager libraryManager)
-        {
-            if (name.IndexOf(SlugChar) == -1)
+            // If they're going to update the record of another user, they must be an administrator
+            if (!string.Equals(userId, auth.UserId, StringComparison.OrdinalIgnoreCase))
             {
-                return name;
-            }
-            
-            return libraryManager.RootFolder.RecursiveChildren
-                .OfType<Audio>()
-                .SelectMany(i => new[] { i.Artist, i.AlbumArtist })
-                .Where(i => !string.IsNullOrEmpty(i))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault(i =>
+                if (!authenticatedUser.Policy.IsAdministrator)
                 {
-                    i = _dashReplaceChars.Aggregate(i, (current, c) => current.Replace(c, SlugChar));
-
-                    return string.Equals(i, name, StringComparison.OrdinalIgnoreCase);
-
-                }) ?? name;
-        }
-
-        /// <summary>
-        /// Deslugs a genre name by finding the correct entry in the library
-        /// </summary>
-        protected string DeSlugGenreName(string name, ILibraryManager libraryManager)
-        {
-            if (name.IndexOf(SlugChar) == -1)
-            {
-                return name;
-            }
-
-            return libraryManager.RootFolder.RecursiveChildren
-                .SelectMany(i => i.Genres)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault(i =>
-                {
-                    i = _dashReplaceChars.Aggregate(i, (current, c) => current.Replace(c, SlugChar));
-
-                    return string.Equals(i, name, StringComparison.OrdinalIgnoreCase);
-
-                }) ?? name;
-        }
-
-        /// <summary>
-        /// Deslugs a studio name by finding the correct entry in the library
-        /// </summary>
-        protected string DeSlugStudioName(string name, ILibraryManager libraryManager)
-        {
-            if (name.IndexOf(SlugChar) == -1)
-            {
-                return name;
-            }
-
-            return libraryManager.RootFolder.RecursiveChildren
-                .SelectMany(i => i.Studios)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault(i =>
-                {
-                    i = _dashReplaceChars.Aggregate(i, (current, c) => current.Replace(c, SlugChar));
-
-                    return string.Equals(i, name, StringComparison.OrdinalIgnoreCase);
-
-                }) ?? name;
-        }
-
-        /// <summary>
-        /// Deslugs a person name by finding the correct entry in the library
-        /// </summary>
-        protected string DeSlugPersonName(string name, ILibraryManager libraryManager)
-        {
-            if (name.IndexOf(SlugChar) == -1)
-            {
-                return name;
-            }
-
-            return libraryManager.RootFolder.RecursiveChildren
-                .SelectMany(i => i.People)
-                .Select(i => i.Name)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault(i =>
-                {
-                    i = _dashReplaceChars.Aggregate(i, (current, c) => current.Replace(c, SlugChar));
-
-                    return string.Equals(i, name, StringComparison.OrdinalIgnoreCase);
-
-                }) ?? name;
-        }
-    }
-
-    /// <summary>
-    /// Class RequestFilterAttribute
-    /// </summary>
-    public class RequestFilterAttribute : Attribute, IHasRequestFilter
-    {
-        //This property will be resolved by the IoC container
-        /// <summary>
-        /// Gets or sets the user manager.
-        /// </summary>
-        /// <value>The user manager.</value>
-        public IUserManager UserManager { get; set; }
-
-        public ISessionManager SessionManager { get; set; }
-
-        /// <summary>
-        /// Gets or sets the logger.
-        /// </summary>
-        /// <value>The logger.</value>
-        public ILogger Logger { get; set; }
-
-        /// <summary>
-        /// The request filter is executed before the service.
-        /// </summary>
-        /// <param name="request">The http request wrapper</param>
-        /// <param name="response">The http response wrapper</param>
-        /// <param name="requestDto">The request DTO</param>
-        public void RequestFilter(IHttpRequest request, IHttpResponse response, object requestDto)
-        {
-            //This code is executed before the service
-
-            var auth = GetAuthorization(request);
-
-            if (auth != null)
-            {
-                User user = null;
-
-                if (auth.ContainsKey("UserId"))
-                {
-                    var userId = auth["UserId"];
-
-                    if (!string.IsNullOrEmpty(userId))
-                    {
-                        user = UserManager.GetUserById(new Guid(userId));
-                    }
+                    throw new SecurityException("Unauthorized access.");
                 }
-
-                var deviceId = auth["DeviceId"];
-                var device = auth["Device"];
-                var client = auth["Client"];
-
-                if (!string.IsNullOrEmpty(client) && !string.IsNullOrEmpty(deviceId) && !string.IsNullOrEmpty(device))
+            }
+            else
+            {
+                if (!authenticatedUser.Policy.EnableUserPreferenceAccess)
                 {
-                    SessionManager.LogConnectionActivity(client, deviceId, device, user);
+                    throw new SecurityException("Unauthorized access.");
                 }
             }
         }
 
         /// <summary>
-        /// Gets the auth.
+        /// To the optimized serialized result using cache.
         /// </summary>
-        /// <param name="httpReq">The HTTP req.</param>
-        /// <returns>Dictionary{System.StringSystem.String}.</returns>
-        public static Dictionary<string, string> GetAuthorization(IHttpRequest httpReq)
+        /// <typeparam name="T"></typeparam>
+        /// <param name="result">The result.</param>
+        /// <returns>System.Object.</returns>
+        protected object ToOptimizedSerializedResultUsingCache<T>(T result)
+           where T : class
         {
-            var auth = httpReq.Headers[HttpHeaders.Authorization];
-
-            return GetAuthorization(auth);
+            return ToOptimizedResult(result);
         }
 
         /// <summary>
-        /// Gets the authorization.
+        /// Gets the session.
         /// </summary>
-        /// <param name="httpReq">The HTTP req.</param>
-        /// <returns>Dictionary{System.StringSystem.String}.</returns>
-        public static Dictionary<string, string> GetAuthorization(IRequestContext httpReq)
+        /// <returns>SessionInfo.</returns>
+        protected async Task<SessionInfo> GetSession(ISessionContext sessionContext)
         {
-            var auth = httpReq.GetHeader("Authorization");
+            var session = await sessionContext.GetSession(Request).ConfigureAwait(false);
 
-            return GetAuthorization(auth);
-        }
-
-        /// <summary>
-        /// Gets the authorization.
-        /// </summary>
-        /// <param name="authorizationHeader">The authorization header.</param>
-        /// <returns>Dictionary{System.StringSystem.String}.</returns>
-        private static Dictionary<string, string> GetAuthorization(string authorizationHeader)
-        {
-            if (authorizationHeader == null) return null;
-
-            var parts = authorizationHeader.Split(' ');
-
-            // There should be at least to parts
-            if (parts.Length < 2) return null;
-
-            // It has to be a digest request
-            if (!string.Equals(parts[0], "MediaBrowser", StringComparison.OrdinalIgnoreCase))
+            if (session == null)
             {
-                return null;
+                throw new ArgumentException("Session not found.");
             }
 
-            // Remove uptil the first space
-            authorizationHeader = authorizationHeader.Substring(authorizationHeader.IndexOf(' '));
-            parts = authorizationHeader.Split(',');
+            return session;
+        }
 
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        protected DtoOptions GetDtoOptions(IAuthorizationContext authContext, object request)
+        {
+            var options = new DtoOptions();
 
-            foreach (var item in parts)
+            var authInfo = authContext.GetAuthorizationInfo(Request);
+
+            options.DeviceId = authInfo.DeviceId;
+
+            var hasFields = request as IHasItemFields;
+            if (hasFields != null)
             {
-                var param = item.Trim().Split(new[] { '=' }, 2);
-                result.Add(param[0], param[1].Trim(new[] { '"' }));
+                options.Fields = hasFields.GetItemFields().ToList();
             }
 
-            return result;
+            var client = authInfo.Client ?? string.Empty;
+            if (client.IndexOf("kodi", StringComparison.OrdinalIgnoreCase) != -1 ||
+                client.IndexOf("wmc", StringComparison.OrdinalIgnoreCase) != -1 ||
+                client.IndexOf("media center", StringComparison.OrdinalIgnoreCase) != -1 ||
+                client.IndexOf("classic", StringComparison.OrdinalIgnoreCase) != -1)
+            {
+                options.Fields.Add(Model.Querying.ItemFields.RecursiveItemCount);
+            }
+
+            if (client.IndexOf("kodi", StringComparison.OrdinalIgnoreCase) != -1 ||
+               client.IndexOf("wmc", StringComparison.OrdinalIgnoreCase) != -1 ||
+               client.IndexOf("media center", StringComparison.OrdinalIgnoreCase) != -1 ||
+               client.IndexOf("classic", StringComparison.OrdinalIgnoreCase) != -1 ||
+               client.IndexOf("roku", StringComparison.OrdinalIgnoreCase) != -1 ||
+               client.IndexOf("samsung", StringComparison.OrdinalIgnoreCase) != -1 ||
+               client.IndexOf("androidtv", StringComparison.OrdinalIgnoreCase) != -1)
+            {
+                options.Fields.Add(Model.Querying.ItemFields.ChildCount);
+            }
+
+            if (client.IndexOf("web", StringComparison.OrdinalIgnoreCase) == -1 &&
+
+                // covers both emby mobile and emby for android mobile
+                client.IndexOf("mobile", StringComparison.OrdinalIgnoreCase) == -1 &&
+                client.IndexOf("ios", StringComparison.OrdinalIgnoreCase) == -1 &&
+                client.IndexOf("theater", StringComparison.OrdinalIgnoreCase) == -1)
+            {
+                options.Fields.Add(Model.Querying.ItemFields.ChildCount);
+            }
+
+            var hasDtoOptions = request as IHasDtoOptions;
+            if (hasDtoOptions != null)
+            {
+                options.EnableImages = hasDtoOptions.EnableImages ?? true;
+
+                if (hasDtoOptions.ImageTypeLimit.HasValue)
+                {
+                    options.ImageTypeLimit = hasDtoOptions.ImageTypeLimit.Value;
+                }
+                if (hasDtoOptions.EnableUserData.HasValue)
+                {
+                    options.EnableUserData = hasDtoOptions.EnableUserData.Value;
+                }
+
+                if (!string.IsNullOrWhiteSpace(hasDtoOptions.EnableImageTypes))
+                {
+                    options.ImageTypes = (hasDtoOptions.EnableImageTypes ?? string.Empty).Split(',').Where(i => !string.IsNullOrWhiteSpace(i)).Select(v => (ImageType)Enum.Parse(typeof(ImageType), v, true)).ToList();
+                }
+            }
+
+            return options;
+        }
+
+        protected MusicArtist GetArtist(string name, ILibraryManager libraryManager)
+        {
+            if (name.IndexOf(BaseItem.SlugChar) != -1)
+            {
+                var result = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    SlugName = name,
+                    IncludeItemTypes = new[] { typeof(MusicArtist).Name }
+
+                }).OfType<MusicArtist>().FirstOrDefault();
+
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+
+            return libraryManager.GetArtist(name);
+        }
+
+        protected Studio GetStudio(string name, ILibraryManager libraryManager)
+        {
+            if (name.IndexOf(BaseItem.SlugChar) != -1)
+            {
+                var result = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    SlugName = name,
+                    IncludeItemTypes = new[] { typeof(Studio).Name }
+
+                }).OfType<Studio>().FirstOrDefault();
+
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+
+            return libraryManager.GetStudio(name);
+        }
+
+        protected Genre GetGenre(string name, ILibraryManager libraryManager)
+        {
+            if (name.IndexOf(BaseItem.SlugChar) != -1)
+            {
+                var result = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    SlugName = name,
+                    IncludeItemTypes = new[] { typeof(Genre).Name }
+
+                }).OfType<Genre>().FirstOrDefault();
+
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+
+            return libraryManager.GetGenre(name);
+        }
+
+        protected MusicGenre GetMusicGenre(string name, ILibraryManager libraryManager)
+        {
+            if (name.IndexOf(BaseItem.SlugChar) != -1)
+            {
+                var result = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    SlugName = name,
+                    IncludeItemTypes = new[] { typeof(MusicGenre).Name }
+
+                }).OfType<MusicGenre>().FirstOrDefault();
+
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+
+            return libraryManager.GetMusicGenre(name);
+        }
+
+        protected GameGenre GetGameGenre(string name, ILibraryManager libraryManager)
+        {
+            if (name.IndexOf(BaseItem.SlugChar) != -1)
+            {
+                var result = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    SlugName = name,
+                    IncludeItemTypes = new[] { typeof(GameGenre).Name }
+
+                }).OfType<GameGenre>().FirstOrDefault();
+
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+
+            return libraryManager.GetGameGenre(name);
+        }
+
+        protected Person GetPerson(string name, ILibraryManager libraryManager)
+        {
+            if (name.IndexOf(BaseItem.SlugChar) != -1)
+            {
+                var result = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    SlugName = name,
+                    IncludeItemTypes = new[] { typeof(Person).Name }
+
+                }).OfType<Person>().FirstOrDefault();
+
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+
+            return libraryManager.GetPerson(name);
+        }
+
+        protected string GetPathValue(int index)
+        {
+            var pathInfo = Parse(Request.PathInfo);
+            var first = pathInfo[0];
+
+            // backwards compatibility
+            if (string.Equals(first, "mediabrowser", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(first, "emby", StringComparison.OrdinalIgnoreCase))
+            {
+                index++;
+            }
+
+            return pathInfo[index];
+        }
+
+        private static List<string> Parse(string pathUri)
+        {
+            var actionParts = pathUri.Split(new[] { "://" }, StringSplitOptions.None);
+
+            var pathInfo = actionParts[actionParts.Length - 1];
+
+            var optionsPos = pathInfo.LastIndexOf('?');
+            if (optionsPos != -1)
+            {
+                pathInfo = pathInfo.Substring(0, optionsPos);
+            }
+
+            var args = pathInfo.Split('/');
+
+            return args.Skip(1).ToList();
         }
 
         /// <summary>
-        /// A new shallow copy of this filter is used on every request.
+        /// Gets the name of the item by.
         /// </summary>
-        /// <returns>IHasRequestFilter.</returns>
-        public IHasRequestFilter Copy()
+        /// <param name="name">The name.</param>
+        /// <param name="type">The type.</param>
+        /// <param name="libraryManager">The library manager.</param>
+        /// <returns>Task{BaseItem}.</returns>
+        protected BaseItem GetItemByName(string name, string type, ILibraryManager libraryManager)
         {
-            return this;
-        }
+            BaseItem item;
 
-        /// <summary>
-        /// Order in which Request Filters are executed.
-        /// &lt;0 Executed before global request filters
-        /// &gt;0 Executed after global request filters
-        /// </summary>
-        /// <value>The priority.</value>
-        public int Priority
-        {
-            get { return 0; }
+            if (type.IndexOf("Person", StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                item = GetPerson(name, libraryManager);
+            }
+            else if (type.IndexOf("Artist", StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                item = GetArtist(name, libraryManager);
+            }
+            else if (type.IndexOf("Genre", StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                item = GetGenre(name, libraryManager);
+            }
+            else if (type.IndexOf("MusicGenre", StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                item = GetMusicGenre(name, libraryManager);
+            }
+            else if (type.IndexOf("GameGenre", StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                item = GetGameGenre(name, libraryManager);
+            }
+            else if (type.IndexOf("Studio", StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                item = GetStudio(name, libraryManager);
+            }
+            else if (type.IndexOf("Year", StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                item = libraryManager.GetYear(int.Parse(name));
+            }
+            else
+            {
+                throw new ArgumentException();
+            }
+
+            return item;
         }
     }
 }

@@ -1,7 +1,7 @@
 ﻿using System;
-using System.Security.Cryptography;
-using System.Text;
+using System.Globalization;
 using System.Text.RegularExpressions;
+using MediaBrowser.Model.Cryptography;
 
 namespace MediaBrowser.Common.Extensions
 {
@@ -10,6 +10,7 @@ namespace MediaBrowser.Common.Extensions
     /// </summary>
     public static class BaseExtensions
     {
+        public static ICryptoProvider CryptographyProvider { get; set; }
 
         /// <summary>
         /// Strips the HTML.
@@ -20,6 +21,7 @@ namespace MediaBrowser.Common.Extensions
         {
             // http://stackoverflow.com/questions/1349023/how-can-i-strip-html-from-text-in-net
             const string pattern = @"<(.|\n)*?>";
+
             return Regex.Replace(htmlString, pattern, string.Empty).Trim();
         }
 
@@ -30,52 +32,27 @@ namespace MediaBrowser.Common.Extensions
         /// <returns>Guid.</returns>
         public static Guid GetMD5(this string str)
         {
-            using (var provider = MD5.Create())
-            {
-                return new Guid(provider.ComputeHash(Encoding.Unicode.GetBytes(str)));
-            }
+            return CryptographyProvider.GetMD5(str);
         }
 
         /// <summary>
         /// Gets the MB id.
         /// </summary>
         /// <param name="str">The STR.</param>
-        /// <param name="aType">A type.</param>
+        /// <param name="type">The type.</param>
         /// <returns>Guid.</returns>
-        /// <exception cref="System.ArgumentNullException">aType</exception>
-        public static Guid GetMBId(this string str, Type aType)
+        /// <exception cref="System.ArgumentNullException">type</exception>
+        [Obsolete("Use LibraryManager.GetNewItemId")]
+        public static Guid GetMBId(this string str, Type type)
         {
-            if (aType == null)
+            if (type == null)
             {
-                throw new ArgumentNullException("aType");
+                throw new ArgumentNullException("type");
             }
-            
-            return (aType.FullName + str.ToLower()).GetMD5();
-        }
 
-        /// <summary>
-        /// Gets the attribute value.
-        /// </summary>
-        /// <param name="str">The STR.</param>
-        /// <param name="attrib">The attrib.</param>
-        /// <returns>System.String.</returns>
-        /// <exception cref="System.ArgumentNullException">attrib</exception>
-        public static string GetAttributeValue(this string str, string attrib)
-        {
-            if (attrib == null)
-            {
-                throw new ArgumentNullException("attrib");
-            }
-            
-            string srch = "[" + attrib + "=";
-            int start = str.IndexOf(srch, StringComparison.OrdinalIgnoreCase);
-            if (start > -1)
-            {
-                start += srch.Length;
-                int end = str.IndexOf(']', start);
-                return str.Substring(start, end - start);
-            }
-            return null;
+            var key = type.FullName + str.ToLower();
+
+            return key.GetMD5();
         }
     }
 }

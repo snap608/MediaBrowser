@@ -1,4 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 using System.Threading;
 
 namespace MediaBrowser.Common.Net
@@ -14,12 +17,20 @@ namespace MediaBrowser.Common.Net
         /// <value>The URL.</value>
         public string Url { get; set; }
 
+        public CompressionMethod? DecompressionMethod { get; set; }
+
         /// <summary>
         /// Gets or sets the accept header.
         /// </summary>
         /// <value>The accept header.</value>
-        public string AcceptHeader { get; set; }
-
+        public string AcceptHeader
+        {
+            get { return GetHeaderValue("Accept"); }
+            set
+            {
+                RequestHeaders["Accept"] = value;
+            }
+        }
         /// <summary>
         /// Gets or sets the cancellation token.
         /// </summary>
@@ -36,7 +47,26 @@ namespace MediaBrowser.Common.Net
         /// Gets or sets the user agent.
         /// </summary>
         /// <value>The user agent.</value>
-        public string UserAgent { get; set; }
+        public string UserAgent
+        {
+            get { return GetHeaderValue("User-Agent"); }
+            set
+            {
+                RequestHeaders["User-Agent"] = value;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the referrer.
+        /// </summary>
+        /// <value>The referrer.</value>
+        public string Referer { get; set; }
+
+        /// <summary>
+        /// Gets or sets the host.
+        /// </summary>
+        /// <value>The host.</value>
+        public string Host { get; set; }
 
         /// <summary>
         /// Gets or sets the progress.
@@ -50,12 +80,72 @@ namespace MediaBrowser.Common.Net
         /// <value><c>true</c> if [enable HTTP compression]; otherwise, <c>false</c>.</value>
         public bool EnableHttpCompression { get; set; }
 
+        public Dictionary<string, string> RequestHeaders { get; private set; }
+
+        public string RequestContentType { get; set; }
+
+        public string RequestContent { get; set; }
+        public byte[] RequestContentBytes { get; set; }
+
+        public bool BufferContent { get; set; }
+
+        public bool LogRequest { get; set; }
+        public bool LogErrors { get; set; }
+
+        public bool LogErrorResponseBody { get; set; }
+        public bool EnableKeepAlive { get; set; }
+
+        public CacheMode CacheMode { get; set; }
+        public TimeSpan CacheLength { get; set; }
+
+        public int TimeoutMs { get; set; }
+        public bool PreferIpv4 { get; set; }
+        public bool EnableDefaultUserAgent { get; set; }
+
+        private string GetHeaderValue(string name)
+        {
+            string value;
+
+            RequestHeaders.TryGetValue(name, out value);
+
+            return value;
+        }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="HttpRequestOptions"/> class.
         /// </summary>
         public HttpRequestOptions()
         {
             EnableHttpCompression = true;
+
+            RequestHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            LogRequest = true;
+            LogErrors = true;
+            CacheMode = CacheMode.None;
+
+            TimeoutMs = 20000;
         }
+
+        public void SetPostData(IDictionary<string,string> values)
+        {
+            var strings = values.Keys.Select(key => string.Format("{0}={1}", key, values[key]));
+            var postContent = string.Join("&", strings.ToArray());
+
+            RequestContent = postContent;
+            RequestContentType = "application/x-www-form-urlencoded";
+        }
+    }
+
+    public enum CacheMode
+    {
+        None = 0,
+        Unconditional = 1
+    }
+
+    public enum CompressionMethod
+    {
+        Deflate,
+        Gzip
     }
 }

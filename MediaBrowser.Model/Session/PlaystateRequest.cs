@@ -1,53 +1,15 @@
-﻿
-namespace MediaBrowser.Model.Session
+﻿namespace MediaBrowser.Model.Session
 {
-    /// <summary>
-    /// Class PlaystateRequest
-    /// </summary>
     public class PlaystateRequest
     {
-        /// <summary>
-        /// Gets or sets the command.
-        /// </summary>
-        /// <value>The command.</value>
         public PlaystateCommand Command { get; set; }
 
-        /// <summary>
-        /// Gets or sets the seek position.
-        /// Only applicable to seek commands.
-        /// </summary>
-        /// <value>The seek position.</value>
-        public long? SeekPosition { get; set; }
-    }
+        public long? SeekPositionTicks { get; set; }
 
-    /// <summary>
-    /// Enum PlaystateCommand
-    /// </summary>
-    public enum PlaystateCommand
-    {
         /// <summary>
-        /// The stop
+        /// Gets or sets the controlling user identifier.
         /// </summary>
-        Stop,
-        /// <summary>
-        /// The pause
-        /// </summary>
-        Pause,
-        /// <summary>
-        /// The unpause
-        /// </summary>
-        Unpause,
-        /// <summary>
-        /// The next track
-        /// </summary>
-        NextTrack,
-        /// <summary>
-        /// The previous track
-        /// </summary>
-        PreviousTrack,
-        /// <summary>
-        /// The seek
-        /// </summary>
-        Seek
+        /// <value>The controlling user identifier.</value>
+        public string ControllingUserId { get; set; }
     }
 }

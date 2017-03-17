@@ -39,10 +39,10 @@ namespace MediaBrowser.Model.Querying
         public string[] SortBy { get; set; }
 
         /// <summary>
-        /// Filter by artists
+        /// Gets or sets the artist ids.
         /// </summary>
-        /// <value>The artists.</value>
-        public string[] Artists { get; set; }
+        /// <value>The artist ids.</value>
+        public string[] ArtistIds { get; set; }
         
         /// <summary>
         /// The sort order to return results with
@@ -72,7 +72,7 @@ namespace MediaBrowser.Model.Querying
         /// Gets or sets the video formats.
         /// </summary>
         /// <value>The video formats.</value>
-        public VideoFormat[] VideoFormats { get; set; }
+        public bool? Is3D { get; set; }
 
         /// <summary>
         /// Gets or sets the video types.
@@ -93,10 +93,10 @@ namespace MediaBrowser.Model.Querying
         public string[] Genres { get; set; }
 
         /// <summary>
-        /// Limit results to items containing specific studios
+        /// Gets or sets the studio ids.
         /// </summary>
-        /// <value>The studios.</value>
-        public string[] Studios { get; set; }
+        /// <value>The studio ids.</value>
+        public string[] StudioIds { get; set; }
 
         /// <summary>
         /// Gets or sets the exclude item types.
@@ -120,7 +120,7 @@ namespace MediaBrowser.Model.Querying
         /// Limit results to items containing a specific person
         /// </summary>
         /// <value>The person.</value>
-        public string Person { get; set; }
+        public string[] PersonIds { get; set; }
 
         /// <summary>
         /// If the Person filter is used, this can also be used to restrict to a specific person type
@@ -133,12 +133,6 @@ namespace MediaBrowser.Model.Querying
         /// </summary>
         /// <value>The index by.</value>
         public string SearchTerm { get; set; }
-
-        /// <summary>
-        /// The dynamic, localized index function name
-        /// </summary>
-        /// <value>The index by.</value>
-        public string IndexBy { get; set; }
 
         /// <summary>
         /// Gets or sets the image types.
@@ -177,34 +171,162 @@ namespace MediaBrowser.Model.Querying
         public string MaxOfficialRating { get; set; }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ItemQuery"/> class.
+        /// Gets or sets the min index number.
+        /// </summary>
+        /// <value>The min index number.</value>
+        public int? MinIndexNumber { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this instance has parental rating.
+        /// </summary>
+        /// <value><c>null</c> if [has parental rating] contains no value, <c>true</c> if [has parental rating]; otherwise, <c>false</c>.</value>
+        public bool? HasParentalRating { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this instance is HD.
+        /// </summary>
+        /// <value><c>null</c> if [is HD] contains no value, <c>true</c> if [is HD]; otherwise, <c>false</c>.</value>
+        public bool? IsHD { get; set; }
+
+        /// <summary>
+        /// Gets or sets the parent index number.
+        /// </summary>
+        /// <value>The parent index number.</value>
+        public int? ParentIndexNumber { get; set; }
+
+        /// <summary>
+        /// Gets or sets the min players.
+        /// </summary>
+        /// <value>The min players.</value>
+        public int? MinPlayers { get; set; }
+
+        /// <summary>
+        /// Gets or sets the max players.
+        /// </summary>
+        /// <value>The max players.</value>
+        public int? MaxPlayers { get; set; }
+
+        /// <summary>
+        /// Gets or sets the name starts with or greater.
+        /// </summary>
+        /// <value>The name starts with or greater.</value>
+        public string NameStartsWithOrGreater { get; set; }
+
+        /// <summary>
+        /// Gets or sets the name starts with.
+        /// </summary>
+        /// <value>The name starts with or greater.</value>
+        public string NameStartsWith { get; set; }
+
+        /// <summary>
+        /// Gets or sets the name starts with.
+        /// </summary>
+        /// <value>The name lessthan.</value>
+        public string NameLessThan { get; set; }
+
+        /// <summary>
+        /// Gets or sets the album artist starts with or greater.
+        /// </summary>
+        /// <value>The album artist starts with or greater.</value>
+        public string AlbumArtistStartsWithOrGreater { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether [include index containers].
+        /// </summary>
+        /// <value><c>true</c> if [include index containers]; otherwise, <c>false</c>.</value>
+        public bool IncludeIndexContainers { get; set; }
+
+        /// <summary>
+        /// Gets or sets the location types.
+        /// </summary>
+        /// <value>The location types.</value>
+        public LocationType[] LocationTypes { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this instance is missing episode.
+        /// </summary>
+        /// <value><c>null</c> if [is missing episode] contains no value, <c>true</c> if [is missing episode]; otherwise, <c>false</c>.</value>
+        public bool? IsMissing { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this instance is unaired episode.
+        /// </summary>
+        /// <value><c>null</c> if [is unaired episode] contains no value, <c>true</c> if [is unaired episode]; otherwise, <c>false</c>.</value>
+        public bool? IsUnaired { get; set; }
+
+        public bool? IsVirtualUnaired { get; set; }
+
+        public bool? IsInBoxSet { get; set; }
+
+        public bool? CollapseBoxSetItems { get; set; }
+
+        public bool? IsPlayed { get; set; }
+
+        /// <summary>
+        /// Gets or sets the exclude location types.
+        /// </summary>
+        /// <value>The exclude location types.</value>
+        public LocationType[] ExcludeLocationTypes { get; set; }
+
+        public double? MinCommunityRating { get; set; }
+        public double? MinCriticRating { get; set; }
+
+        public int? AiredDuringSeason { get; set; }
+
+        public DateTime? MinPremiereDate { get; set; }
+
+        public DateTime? MaxPremiereDate { get; set; }
+
+        public bool? EnableImages { get; set; }
+        public int? ImageTypeLimit { get; set; }
+        public ImageType[] EnableImageTypes { get; set; }
+
+        [Obsolete]
+        public string[] Artists { get; set; }
+        [Obsolete]
+        public string[] Studios { get; set; }
+        [Obsolete]
+        public string Person { get; set; }
+
+        public bool EnableTotalRecordCount { get; set; }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ItemQuery" /> class.
         /// </summary>
         public ItemQuery()
         {
-            SortBy = new string[] {};
+            LocationTypes = new LocationType[] { };
+            ExcludeLocationTypes = new LocationType[] { };
 
-            Filters = new ItemFilter[] {};
+            SortBy = new string[] { };
 
-            Fields = new ItemFields[] {};
+            Filters = new ItemFilter[] { };
 
-            MediaTypes = new string[] {};
+            Fields = new ItemFields[] { };
 
-            VideoFormats = new VideoFormat[] { };
+            MediaTypes = new string[] { };
 
-            VideoTypes = new VideoType[] {};
+            VideoTypes = new VideoType[] { };
 
-            Genres = new string[] { };
+            EnableTotalRecordCount = true;
+
+            Artists = new string[] { };
             Studios = new string[] { };
+            
+            Genres = new string[] { };
+            StudioIds = new string[] { };
             IncludeItemTypes = new string[] { };
             ExcludeItemTypes = new string[] { };
             Years = new int[] { };
             PersonTypes = new string[] { };
             Ids = new string[] { };
-            Artists = new string[] { };
+            ArtistIds = new string[] { };
+            PersonIds = new string[] { };
 
             ImageTypes = new ImageType[] { };
             AirDays = new DayOfWeek[] { };
             SeriesStatuses = new SeriesStatus[] { };
+            EnableImageTypes = new ImageType[] { };
         }
     }
 }

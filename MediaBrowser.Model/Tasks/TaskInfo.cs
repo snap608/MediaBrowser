@@ -1,4 +1,4 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 namespace MediaBrowser.Model.Tasks
 {
@@ -29,7 +29,7 @@ namespace MediaBrowser.Model.Tasks
         /// Gets or sets the id.
         /// </summary>
         /// <value>The id.</value>
-        public Guid Id { get; set; }
+        public string Id { get; set; }
 
         /// <summary>
         /// Gets or sets the last execution result.
@@ -41,7 +41,7 @@ namespace MediaBrowser.Model.Tasks
         /// Gets or sets the triggers.
         /// </summary>
         /// <value>The triggers.</value>
-        public TaskTriggerInfo[] Triggers { get; set; }
+        public List<TaskTriggerInfo> Triggers { get; set; }
 
         /// <summary>
         /// Gets or sets the description.
@@ -56,11 +56,23 @@ namespace MediaBrowser.Model.Tasks
         public string Category { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether this instance is hidden.
+        /// </summary>
+        /// <value><c>true</c> if this instance is hidden; otherwise, <c>false</c>.</value>
+        public bool IsHidden { get; set; }
+
+        /// <summary>
+        /// Gets or sets the key.
+        /// </summary>
+        /// <value>The key.</value>
+        public string Key { get; set; }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="TaskInfo"/> class.
         /// </summary>
         public TaskInfo()
         {
-            Triggers = new TaskTriggerInfo[] {};
+            Triggers = new List<TaskTriggerInfo>();
         }
     }
 }

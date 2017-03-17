@@ -1,9 +1,14 @@
 ﻿using MediaBrowser.Controller.Entities;
-using MediaBrowser.Controller.IO;
+using MediaBrowser.Controller.Providers;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using MediaBrowser.Common.IO;
+using MediaBrowser.Controller.Configuration;
+using MediaBrowser.Controller.IO;
+using MediaBrowser.Model.Configuration;
+using MediaBrowser.Model.IO;
 
 namespace MediaBrowser.Controller.Library
 {
@@ -18,29 +23,50 @@ namespace MediaBrowser.Controller.Library
         /// </summary>
         private readonly IServerApplicationPaths _appPaths;
 
+        public IDirectoryService DirectoryService { get; private set; }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="ItemResolveArgs" /> class.
         /// </summary>
         /// <param name="appPaths">The app paths.</param>
-        public ItemResolveArgs(IServerApplicationPaths appPaths)
+        /// <param name="directoryService">The directory service.</param>
+        public ItemResolveArgs(IServerApplicationPaths appPaths, IDirectoryService directoryService)
         {
             _appPaths = appPaths;
+            DirectoryService = directoryService;
         }
 
         /// <summary>
         /// Gets the file system children.
         /// </summary>
         /// <value>The file system children.</value>
-        public IEnumerable<FileSystemInfo> FileSystemChildren
+        public IEnumerable<FileSystemMetadata> FileSystemChildren
         {
-            get { return FileSystemDictionary.Values; }
+            get
+            {
+                var dict = FileSystemDictionary;
+
+                if (dict == null)
+                {
+                    return new List<FileSystemMetadata>();
+                }
+
+                return dict.Values;
+            }
+        }
+
+        public LibraryOptions LibraryOptions { get; set; }
+
+        public LibraryOptions GetLibraryOptions()
+        {
+            return LibraryOptions ?? (LibraryOptions = (Parent == null ? new LibraryOptions() : BaseItem.LibraryManager.GetLibraryOptions(Parent)));
         }
 
         /// <summary>
         /// Gets or sets the file system dictionary.
         /// </summary>
         /// <value>The file system dictionary.</value>
-        public Dictionary<string, FileSystemInfo> FileSystemDictionary { get; set; }
+        public Dictionary<string, FileSystemMetadata> FileSystemDictionary { get; set; }
 
         /// <summary>
         /// Gets or sets the parent.
@@ -52,7 +78,7 @@ namespace MediaBrowser.Controller.Library
         /// Gets or sets the file info.
         /// </summary>
         /// <value>The file info.</value>
-        public FileSystemInfo FileInfo { get; set; }
+        public FileSystemMetadata FileInfo { get; set; }
 
         /// <summary>
         /// Gets or sets the path.
@@ -68,31 +94,7 @@ namespace MediaBrowser.Controller.Library
         {
             get
             {
-                return FileInfo.Attributes.HasFlag(FileAttributes.Directory);
-            }
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether this instance is hidden.
-        /// </summary>
-        /// <value><c>true</c> if this instance is hidden; otherwise, <c>false</c>.</value>
-        public bool IsHidden
-        {
-            get
-            {
-                return FileInfo.Attributes.HasFlag(FileAttributes.Hidden);
-            }
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether this instance is system file.
-        /// </summary>
-        /// <value><c>true</c> if this instance is system file; otherwise, <c>false</c>.</value>
-        public bool IsSystemFile
-        {
-            get
-            {
-                return FileInfo.Attributes.HasFlag(FileAttributes.System);
+                return FileInfo.IsDirectory;
             }
         }
 
@@ -112,10 +114,10 @@ namespace MediaBrowser.Controller.Library
                     return false;
                 }
 
-                var parentDir = System.IO.Path.GetDirectoryName(FileInfo.FullName) ?? string.Empty;
+                var parentDir = System.IO.Path.GetDirectoryName(Path) ?? string.Empty;
 
-                return (parentDir.Length > _appPaths.RootFolderPath.Length
-                    && parentDir.StartsWith(_appPaths.RootFolderPath, StringComparison.OrdinalIgnoreCase));
+                return parentDir.Length > _appPaths.RootFolderPath.Length
+                       && parentDir.StartsWith(_appPaths.RootFolderPath, StringComparison.OrdinalIgnoreCase);
 
             }
         }
@@ -128,19 +130,7 @@ namespace MediaBrowser.Controller.Library
         {
             get
             {
-                return IsDirectory && Path.Equals(_appPaths.RootFolderPath, StringComparison.OrdinalIgnoreCase);
-            }
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether this instance is root.
-        /// </summary>
-        /// <value><c>true</c> if this instance is root; otherwise, <c>false</c>.</value>
-        public bool IsRoot
-        {
-            get
-            {
-                return Parent == null;
+                return IsDirectory && string.Equals(Path, _appPaths.RootFolderPath, StringComparison.OrdinalIgnoreCase);
             }
         }
 
@@ -149,6 +139,28 @@ namespace MediaBrowser.Controller.Library
         /// </summary>
         /// <value>The additional locations.</value>
         private List<string> AdditionalLocations { get; set; }
+
+        public bool HasParent<T>()
+            where T : Folder
+        {
+            var parent = Parent;
+
+            if (parent != null)
+            {
+                var item = parent as T;
+
+                // Just in case the user decided to nest episodes. 
+                // Not officially supported but in some cases we can handle it.
+                if (item == null)
+                {
+                    item = parent.GetParents().OfType<T>().FirstOrDefault();
+                }
+
+                return item != null;
+
+            }
+            return false;
+        }
 
         /// <summary>
         /// Adds the additional location.
@@ -161,7 +173,7 @@ namespace MediaBrowser.Controller.Library
             {
                 throw new ArgumentNullException();
             }
-            
+
             if (AdditionalLocations == null)
             {
                 AdditionalLocations = new List<string>();
@@ -178,79 +190,8 @@ namespace MediaBrowser.Controller.Library
         {
             get
             {
-                var paths = string.IsNullOrWhiteSpace(Path) ? new string[] {} : new[] {Path};
+                var paths = string.IsNullOrWhiteSpace(Path) ? new string[] { } : new[] { Path };
                 return AdditionalLocations == null ? paths : paths.Concat(AdditionalLocations);
-            }
-        }
-
-        /// <summary>
-        /// Store these to reduce disk access in Resolvers
-        /// </summary>
-        /// <value>The metadata file dictionary.</value>
-        private Dictionary<string, FileSystemInfo> MetadataFileDictionary { get; set; }
-
-        /// <summary>
-        /// Gets the metadata files.
-        /// </summary>
-        /// <value>The metadata files.</value>
-        public IEnumerable<FileSystemInfo> MetadataFiles
-        {
-            get
-            {
-                if (MetadataFileDictionary != null)
-                {
-                    return MetadataFileDictionary.Values;
-                }
-
-                return new FileSystemInfo[] { };
-            }
-        }
-
-        /// <summary>
-        /// Adds the metadata file.
-        /// </summary>
-        /// <param name="path">The path.</param>
-        /// <exception cref="System.IO.FileNotFoundException"></exception>
-        public void AddMetadataFile(string path)
-        {
-            var file = FileSystem.GetFileSystemInfo(path);
-
-            if (!file.Exists)
-            {
-                throw new FileNotFoundException(path);
-            }
-
-            AddMetadataFile(file);
-        }
-
-        /// <summary>
-        /// Adds the metadata file.
-        /// </summary>
-        /// <param name="fileInfo">The file info.</param>
-        public void AddMetadataFile(FileSystemInfo fileInfo)
-        {
-            AddMetadataFiles(new[] { fileInfo });
-        }
-
-        /// <summary>
-        /// Adds the metadata files.
-        /// </summary>
-        /// <param name="files">The files.</param>
-        /// <exception cref="System.ArgumentNullException"></exception>
-        public void AddMetadataFiles(IEnumerable<FileSystemInfo> files)
-        {
-            if (files == null)
-            {
-                throw new ArgumentNullException();
-            }
-            
-            if (MetadataFileDictionary == null)
-            {
-                MetadataFileDictionary = new Dictionary<string, FileSystemInfo>(StringComparer.OrdinalIgnoreCase);
-            }
-            foreach (var file in files)
-            {
-                MetadataFileDictionary[file.Name] = file;
             }
         }
 
@@ -260,13 +201,13 @@ namespace MediaBrowser.Controller.Library
         /// <param name="name">The name.</param>
         /// <returns>FileSystemInfo.</returns>
         /// <exception cref="System.ArgumentNullException"></exception>
-        public FileSystemInfo GetFileSystemEntryByName(string name)
+        public FileSystemMetadata GetFileSystemEntryByName(string name)
         {
             if (string.IsNullOrEmpty(name))
             {
                 throw new ArgumentNullException();
             }
-            
+
             return GetFileSystemEntryByPath(System.IO.Path.Combine(Path, name));
         }
 
@@ -276,16 +217,16 @@ namespace MediaBrowser.Controller.Library
         /// <param name="path">The path.</param>
         /// <returns>FileSystemInfo.</returns>
         /// <exception cref="System.ArgumentNullException"></exception>
-        public FileSystemInfo GetFileSystemEntryByPath(string path)
+        public FileSystemMetadata GetFileSystemEntryByPath(string path)
         {
             if (string.IsNullOrEmpty(path))
             {
                 throw new ArgumentNullException();
             }
-            
+
             if (FileSystemDictionary != null)
             {
-                FileSystemInfo entry;
+                FileSystemMetadata entry;
 
                 if (FileSystemDictionary.TryGetValue(path, out entry))
                 {
@@ -297,65 +238,18 @@ namespace MediaBrowser.Controller.Library
         }
 
         /// <summary>
-        /// Gets the meta file by path.
-        /// </summary>
-        /// <param name="path">The path.</param>
-        /// <returns>FileSystemInfo.</returns>
-        /// <exception cref="System.ArgumentNullException"></exception>
-        public FileSystemInfo GetMetaFileByPath(string path)
-        {
-            if (string.IsNullOrEmpty(path))
-            {
-                throw new ArgumentNullException();
-            }
-            
-            if (MetadataFileDictionary != null)
-            {
-                FileSystemInfo entry;
-
-                if (MetadataFileDictionary.TryGetValue(System.IO.Path.GetFileName(path), out entry))
-                {
-                    return entry;
-                }
-            }
-
-            return GetFileSystemEntryByPath(path);
-        }
-
-        /// <summary>
-        /// Gets the name of the meta file by.
-        /// </summary>
-        /// <param name="name">The name.</param>
-        /// <returns>FileSystemInfo.</returns>
-        /// <exception cref="System.ArgumentNullException"></exception>
-        public FileSystemInfo GetMetaFileByName(string name)
-        {
-            if (string.IsNullOrEmpty(name))
-            {
-                throw new ArgumentNullException();
-            }
-            
-            if (MetadataFileDictionary != null)
-            {
-                FileSystemInfo entry;
-
-                if (MetadataFileDictionary.TryGetValue(name, out entry))
-                {
-                    return entry;
-                }
-            }
-
-            return GetFileSystemEntryByName(name);
-        }
-
-        /// <summary>
         /// Determines whether [contains meta file by name] [the specified name].
         /// </summary>
         /// <param name="name">The name.</param>
         /// <returns><c>true</c> if [contains meta file by name] [the specified name]; otherwise, <c>false</c>.</returns>
         public bool ContainsMetaFileByName(string name)
         {
-            return GetMetaFileByName(name) != null;
+            if (string.IsNullOrEmpty(name))
+            {
+                throw new ArgumentNullException();
+            }
+
+            return GetFileSystemEntryByName(name) != null;
         }
 
         /// <summary>
@@ -368,6 +262,13 @@ namespace MediaBrowser.Controller.Library
             return GetFileSystemEntryByName(name) != null;
         }
 
+        public string GetCollectionType()
+        {
+            return CollectionType;
+        }
+
+        public string CollectionType { get; set; }
+
         #region Equality Overrides
 
         /// <summary>
@@ -377,7 +278,7 @@ namespace MediaBrowser.Controller.Library
         /// <returns><c>true</c> if the specified <see cref="System.Object" /> is equal to this instance; otherwise, <c>false</c>.</returns>
         public override bool Equals(object obj)
         {
-            return (Equals(obj as ItemResolveArgs));
+            return Equals(obj as ItemResolveArgs);
         }
 
         /// <summary>

@@ -1,8 +1,10 @@
 ﻿using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Logging;
 using System;
 using System.Collections.Generic;
-using System.IO;
+using MediaBrowser.Common.IO;
+using MediaBrowser.Model.IO;
 
 namespace MediaBrowser.Controller.IO
 {
@@ -14,67 +16,83 @@ namespace MediaBrowser.Controller.IO
         /// <summary>
         /// Gets the filtered file system entries.
         /// </summary>
+        /// <param name="directoryService">The directory service.</param>
         /// <param name="path">The path.</param>
+        /// <param name="fileSystem">The file system.</param>
         /// <param name="logger">The logger.</param>
-        /// <param name="searchPattern">The search pattern.</param>
+        /// <param name="args">The args.</param>
         /// <param name="flattenFolderDepth">The flatten folder depth.</param>
         /// <param name="resolveShortcuts">if set to <c>true</c> [resolve shortcuts].</param>
-        /// <param name="args">The args.</param>
         /// <returns>Dictionary{System.StringFileSystemInfo}.</returns>
         /// <exception cref="System.ArgumentNullException">path</exception>
-        public static Dictionary<string, FileSystemInfo> GetFilteredFileSystemEntries(string path, ILogger logger, string searchPattern = "*", int flattenFolderDepth = 0, bool resolveShortcuts = true, ItemResolveArgs args = null)
+        public static Dictionary<string, FileSystemMetadata> GetFilteredFileSystemEntries(IDirectoryService directoryService,
+            string path,
+            IFileSystem fileSystem,
+            ILogger logger,
+            ItemResolveArgs args,
+            int flattenFolderDepth = 0,
+            bool resolveShortcuts = true)
         {
             if (string.IsNullOrEmpty(path))
             {
                 throw new ArgumentNullException("path");
             }
+            if (args == null)
+            {
+                throw new ArgumentNullException("args");
+            }
 
-            var dict = new Dictionary<string, FileSystemInfo>(StringComparer.OrdinalIgnoreCase);
-            
-            var entries = new DirectoryInfo(path).EnumerateFileSystemInfos(searchPattern, SearchOption.TopDirectoryOnly);
+            if (!resolveShortcuts && flattenFolderDepth == 0)
+            {
+                return directoryService.GetFileSystemDictionary(path);
+            }
+
+            var entries = directoryService.GetFileSystemEntries(path);
+
+            var dict = new Dictionary<string, FileSystemMetadata>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var entry in entries)
             {
-                var isDirectory = entry.Attributes.HasFlag(FileAttributes.Directory);
+                var isDirectory = entry.IsDirectory;
 
-                if (resolveShortcuts && FileSystem.IsShortcut(entry.FullName))
+                var fullName = entry.FullName;
+
+                if (resolveShortcuts && fileSystem.IsShortcut(fullName))
                 {
-                    var newPath = FileSystem.ResolveShortcut(entry.FullName);
-
-                    if (string.IsNullOrWhiteSpace(newPath))
+                    try
                     {
-                        //invalid shortcut - could be old or target could just be unavailable
-                        logger.Warn("Encountered invalid shortcut: " + entry.FullName);
-                        continue;
-                    }
+                        var newPath = fileSystem.ResolveShortcut(fullName);
 
-                    var data = FileSystem.GetFileSystemInfo(newPath);
-
-                    if (data.Exists)
-                    {
-                        // add to our physical locations
-                        if (args != null)
+                        if (string.IsNullOrWhiteSpace(newPath))
                         {
-                            args.AddAdditionalLocation(newPath);
+                            //invalid shortcut - could be old or target could just be unavailable
+                            logger.Warn("Encountered invalid shortcut: " + fullName);
+                            continue;
                         }
 
-                        dict[data.FullName] = data;
+                        // Don't check if it exists here because that could return false for network shares.
+                        var data = fileSystem.GetDirectoryInfo(newPath);
+
+                        // add to our physical locations
+                        args.AddAdditionalLocation(newPath);
+
+                        dict[newPath] = data;
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        logger.Warn("Cannot add unavailble/non-existent location {0}", data.FullName);
+                        logger.ErrorException("Error resolving shortcut from {0}", ex, fullName);
                     }
                 }
                 else if (flattenFolderDepth > 0 && isDirectory)
                 {
-                    foreach (var child in GetFilteredFileSystemEntries(entry.FullName, logger, flattenFolderDepth: flattenFolderDepth - 1, resolveShortcuts: resolveShortcuts))
+                    foreach (var child in GetFilteredFileSystemEntries(directoryService, fullName, fileSystem, logger, args, flattenFolderDepth: flattenFolderDepth - 1, resolveShortcuts: resolveShortcuts))
                     {
                         dict[child.Key] = child.Value;
                     }
                 }
                 else
                 {
-                    dict[entry.FullName] = entry;
+                    dict[fullName] = entry;
                 }
             }
 

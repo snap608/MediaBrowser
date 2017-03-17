@@ -1,25 +1,29 @@
 ﻿using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
-using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
-using MediaBrowser.Controller.Persistence;
-using MediaBrowser.Controller.Session;
+using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Querying;
-using ServiceStack.ServiceHost;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Common.IO;
+using MediaBrowser.Controller.Entities.Audio;
+using MediaBrowser.Controller.IO;
+using MediaBrowser.Model.IO;
+using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Services;
 
 namespace MediaBrowser.Api.UserLibrary
 {
     /// <summary>
     /// Class GetItem
     /// </summary>
-    [Route("/Users/{UserId}/Items/{Id}", "GET")]
-    [Api(Description = "Gets an item from a user's library")]
+    [Route("/Users/{UserId}/Items/{Id}", "GET", Summary = "Gets an item from a user's library")]
     public class GetItem : IReturn<BaseItemDto>
     {
         /// <summary>
@@ -27,7 +31,7 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public Guid UserId { get; set; }
+        public string UserId { get; set; }
 
         /// <summary>
         /// Gets or sets the id.
@@ -40,8 +44,7 @@ namespace MediaBrowser.Api.UserLibrary
     /// <summary>
     /// Class GetItem
     /// </summary>
-    [Route("/Users/{UserId}/Items/Root", "GET")]
-    [Api(Description = "Gets the root folder from a user's library")]
+    [Route("/Users/{UserId}/Items/Root", "GET", Summary = "Gets the root folder from a user's library")]
     public class GetRootFolder : IReturn<BaseItemDto>
     {
         /// <summary>
@@ -49,22 +52,21 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public Guid UserId { get; set; }
+        public string UserId { get; set; }
     }
 
     /// <summary>
     /// Class GetIntros
     /// </summary>
-    [Route("/Users/{UserId}/Items/{Id}/Intros", "GET")]
-    [Api(("Gets intros to play before the main media item plays"))]
-    public class GetIntros : IReturn<List<string>>
+    [Route("/Users/{UserId}/Items/{Id}/Intros", "GET", Summary = "Gets intros to play before the main media item plays")]
+    public class GetIntros : IReturn<ItemsResult>
     {
         /// <summary>
         /// Gets or sets the user id.
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public Guid UserId { get; set; }
+        public string UserId { get; set; }
 
         /// <summary>
         /// Gets or sets the item id.
@@ -77,16 +79,15 @@ namespace MediaBrowser.Api.UserLibrary
     /// <summary>
     /// Class MarkFavoriteItem
     /// </summary>
-    [Route("/Users/{UserId}/FavoriteItems/{Id}", "POST")]
-    [Api(Description = "Marks an item as a favorite")]
-    public class MarkFavoriteItem : IReturnVoid
+    [Route("/Users/{UserId}/FavoriteItems/{Id}", "POST", Summary = "Marks an item as a favorite")]
+    public class MarkFavoriteItem : IReturn<UserItemDataDto>
     {
         /// <summary>
         /// Gets or sets the user id.
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "POST")]
-        public Guid UserId { get; set; }
+        public string UserId { get; set; }
 
         /// <summary>
         /// Gets or sets the id.
@@ -99,16 +100,15 @@ namespace MediaBrowser.Api.UserLibrary
     /// <summary>
     /// Class UnmarkFavoriteItem
     /// </summary>
-    [Route("/Users/{UserId}/FavoriteItems/{Id}", "DELETE")]
-    [Api(Description = "Unmarks an item as a favorite")]
-    public class UnmarkFavoriteItem : IReturnVoid
+    [Route("/Users/{UserId}/FavoriteItems/{Id}", "DELETE", Summary = "Unmarks an item as a favorite")]
+    public class UnmarkFavoriteItem : IReturn<UserItemDataDto>
     {
         /// <summary>
         /// Gets or sets the user id.
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "DELETE")]
-        public Guid UserId { get; set; }
+        public string UserId { get; set; }
 
         /// <summary>
         /// Gets or sets the id.
@@ -121,16 +121,15 @@ namespace MediaBrowser.Api.UserLibrary
     /// <summary>
     /// Class ClearUserItemRating
     /// </summary>
-    [Route("/Users/{UserId}/Items/{Id}/Rating", "DELETE")]
-    [Api(Description = "Deletes a user's saved personal rating for an item")]
-    public class DeleteUserItemRating : IReturnVoid
+    [Route("/Users/{UserId}/Items/{Id}/Rating", "DELETE", Summary = "Deletes a user's saved personal rating for an item")]
+    public class DeleteUserItemRating : IReturn<UserItemDataDto>
     {
         /// <summary>
         /// Gets or sets the user id.
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "DELETE")]
-        public Guid UserId { get; set; }
+        public string UserId { get; set; }
 
         /// <summary>
         /// Gets or sets the id.
@@ -143,16 +142,15 @@ namespace MediaBrowser.Api.UserLibrary
     /// <summary>
     /// Class UpdateUserItemRating
     /// </summary>
-    [Route("/Users/{UserId}/Items/{Id}/Rating", "POST")]
-    [Api(Description = "Updates a user's rating for an item")]
-    public class UpdateUserItemRating : IReturnVoid
+    [Route("/Users/{UserId}/Items/{Id}/Rating", "POST", Summary = "Updates a user's rating for an item")]
+    public class UpdateUserItemRating : IReturn<UserItemDataDto>
     {
         /// <summary>
         /// Gets or sets the user id.
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "POST")]
-        public Guid UserId { get; set; }
+        public string UserId { get; set; }
 
         /// <summary>
         /// Gets or sets the id.
@@ -170,137 +168,9 @@ namespace MediaBrowser.Api.UserLibrary
     }
 
     /// <summary>
-    /// Class MarkPlayedItem
-    /// </summary>
-    [Route("/Users/{UserId}/PlayedItems/{Id}", "POST")]
-    [Api(Description = "Marks an item as played")]
-    public class MarkPlayedItem : IReturnVoid
-    {
-        /// <summary>
-        /// Gets or sets the user id.
-        /// </summary>
-        /// <value>The user id.</value>
-        [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "POST")]
-        public Guid UserId { get; set; }
-
-        /// <summary>
-        /// Gets or sets the id.
-        /// </summary>
-        /// <value>The id.</value>
-        [ApiMember(Name = "Id", Description = "Item Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "POST")]
-        public string Id { get; set; }
-    }
-
-    /// <summary>
-    /// Class MarkUnplayedItem
-    /// </summary>
-    [Route("/Users/{UserId}/PlayedItems/{Id}", "DELETE")]
-    [Api(Description = "Marks an item as unplayed")]
-    public class MarkUnplayedItem : IReturnVoid
-    {
-        /// <summary>
-        /// Gets or sets the user id.
-        /// </summary>
-        /// <value>The user id.</value>
-        [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "DELETE")]
-        public Guid UserId { get; set; }
-
-        /// <summary>
-        /// Gets or sets the id.
-        /// </summary>
-        /// <value>The id.</value>
-        [ApiMember(Name = "Id", Description = "Item Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "DELETE")]
-        public string Id { get; set; }
-    }
-
-    /// <summary>
-    /// Class OnPlaybackStart
-    /// </summary>
-    [Route("/Users/{UserId}/PlayingItems/{Id}", "POST")]
-    [Api(Description = "Reports that a user has begun playing an item")]
-    public class OnPlaybackStart : IReturnVoid
-    {
-        /// <summary>
-        /// Gets or sets the user id.
-        /// </summary>
-        /// <value>The user id.</value>
-        [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "POST")]
-        public Guid UserId { get; set; }
-
-        /// <summary>
-        /// Gets or sets the id.
-        /// </summary>
-        /// <value>The id.</value>
-        [ApiMember(Name = "Id", Description = "Item Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "POST")]
-        public string Id { get; set; }
-    }
-
-    /// <summary>
-    /// Class OnPlaybackProgress
-    /// </summary>
-    [Route("/Users/{UserId}/PlayingItems/{Id}/Progress", "POST")]
-    [Api(Description = "Reports a user's playback progress")]
-    public class OnPlaybackProgress : IReturnVoid
-    {
-        /// <summary>
-        /// Gets or sets the user id.
-        /// </summary>
-        /// <value>The user id.</value>
-        [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "POST")]
-        public Guid UserId { get; set; }
-
-        /// <summary>
-        /// Gets or sets the id.
-        /// </summary>
-        /// <value>The id.</value>
-        [ApiMember(Name = "Id", Description = "Item Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "POST")]
-        public string Id { get; set; }
-
-        /// <summary>
-        /// Gets or sets the position ticks.
-        /// </summary>
-        /// <value>The position ticks.</value>
-        [ApiMember(Name = "PositionTicks", Description = "Optional. The current position, in ticks. 1 tick = 10000 ms", IsRequired = false, DataType = "int", ParameterType = "query", Verb = "POST")]
-        public long? PositionTicks { get; set; }
-
-        [ApiMember(Name = "IsPaused", Description = "Indicates if the player is paused.", IsRequired = false, DataType = "boolean", ParameterType = "query", Verb = "POST")]
-        public bool IsPaused { get; set; }
-    }
-
-    /// <summary>
-    /// Class OnPlaybackStopped
-    /// </summary>
-    [Route("/Users/{UserId}/PlayingItems/{Id}", "DELETE")]
-    [Api(Description = "Reports that a user has stopped playing an item")]
-    public class OnPlaybackStopped : IReturnVoid
-    {
-        /// <summary>
-        /// Gets or sets the user id.
-        /// </summary>
-        /// <value>The user id.</value>
-        [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "DELETE")]
-        public Guid UserId { get; set; }
-
-        /// <summary>
-        /// Gets or sets the id.
-        /// </summary>
-        /// <value>The id.</value>
-        [ApiMember(Name = "Id", Description = "Item Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "DELETE")]
-        public string Id { get; set; }
-
-        /// <summary>
-        /// Gets or sets the position ticks.
-        /// </summary>
-        /// <value>The position ticks.</value>
-        [ApiMember(Name = "PositionTicks", Description = "Optional. The position, in ticks, where playback stopped. 1 tick = 10000 ms", IsRequired = false, DataType = "int", ParameterType = "query", Verb = "DELETE")]
-        public long? PositionTicks { get; set; }
-    }
-
-    /// <summary>
     /// Class GetLocalTrailers
     /// </summary>
-    [Route("/Users/{UserId}/Items/{Id}/LocalTrailers", "GET")]
-    [Api(Description = "Gets local trailers for an item")]
+    [Route("/Users/{UserId}/Items/{Id}/LocalTrailers", "GET", Summary = "Gets local trailers for an item")]
     public class GetLocalTrailers : IReturn<List<BaseItemDto>>
     {
         /// <summary>
@@ -308,7 +178,7 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public Guid UserId { get; set; }
+        public string UserId { get; set; }
 
         /// <summary>
         /// Gets or sets the id.
@@ -321,8 +191,7 @@ namespace MediaBrowser.Api.UserLibrary
     /// <summary>
     /// Class GetSpecialFeatures
     /// </summary>
-    [Route("/Users/{UserId}/Items/{Id}/SpecialFeatures", "GET")]
-    [Api(Description = "Gets special features for a movie")]
+    [Route("/Users/{UserId}/Items/{Id}/SpecialFeatures", "GET", Summary = "Gets special features for an item")]
     public class GetSpecialFeatures : IReturn<List<BaseItemDto>>
     {
         /// <summary>
@@ -330,7 +199,7 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public Guid UserId { get; set; }
+        public string UserId { get; set; }
 
         /// <summary>
         /// Gets or sets the id.
@@ -340,45 +209,79 @@ namespace MediaBrowser.Api.UserLibrary
         public string Id { get; set; }
     }
 
+    [Route("/Users/{UserId}/Items/Latest", "GET", Summary = "Gets latest media")]
+    public class GetLatestMedia : IReturn<List<BaseItemDto>>, IHasDtoOptions
+    {
+        /// <summary>
+        /// Gets or sets the user id.
+        /// </summary>
+        /// <value>The user id.</value>
+        [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
+        public string UserId { get; set; }
+
+        [ApiMember(Name = "Limit", Description = "Limit", IsRequired = false, DataType = "int", ParameterType = "query", Verb = "GET")]
+        public int Limit { get; set; }
+
+        [ApiMember(Name = "ParentId", Description = "Specify this to localize the search to a specific item or folder. Omit to use the root", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
+        public string ParentId { get; set; }
+
+        [ApiMember(Name = "Fields", Description = "Optional. Specify additional fields of information to return in the output. This allows multiple, comma delimeted. Options: Budget, Chapters, CriticRatingSummary, DateCreated, Genres, HomePageUrl, IndexOptions, MediaStreams, Overview, ParentId, Path, People, ProviderIds, PrimaryImageAspectRatio, Revenue, SortName, Studios, Taglines", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
+        public string Fields { get; set; }
+
+        [ApiMember(Name = "IncludeItemTypes", Description = "Optional. If specified, results will be filtered based on item type. This allows multiple, comma delimeted.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
+        public string IncludeItemTypes { get; set; }
+
+        [ApiMember(Name = "IsFolder", Description = "Filter by items that are folders, or not.", IsRequired = false, DataType = "bool", ParameterType = "query", Verb = "GET")]
+        public bool? IsFolder { get; set; }
+
+        [ApiMember(Name = "IsPlayed", Description = "Filter by items that are played, or not.", IsRequired = false, DataType = "bool", ParameterType = "query", Verb = "GET")]
+        public bool? IsPlayed { get; set; }
+
+        [ApiMember(Name = "GroupItems", Description = "Whether or not to group items into a parent container.", IsRequired = false, DataType = "bool", ParameterType = "query", Verb = "GET")]
+        public bool GroupItems { get; set; }
+
+        [ApiMember(Name = "EnableImages", Description = "Optional, include image information in output", IsRequired = false, DataType = "boolean", ParameterType = "query", Verb = "GET")]
+        public bool? EnableImages { get; set; }
+
+        [ApiMember(Name = "ImageTypeLimit", Description = "Optional, the max number of images to return, per image type", IsRequired = false, DataType = "int", ParameterType = "query", Verb = "GET")]
+        public int? ImageTypeLimit { get; set; }
+
+        [ApiMember(Name = "EnableImageTypes", Description = "Optional. The image types to include in the output.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
+        public string EnableImageTypes { get; set; }
+
+        [ApiMember(Name = "EnableUserData", Description = "Optional, include user data", IsRequired = false, DataType = "boolean", ParameterType = "query", Verb = "GET")]
+        public bool? EnableUserData { get; set; }
+
+        public GetLatestMedia()
+        {
+            Limit = 20;
+            GroupItems = true;
+        }
+    }
 
     /// <summary>
     /// Class UserLibraryService
     /// </summary>
+    [Authenticated]
     public class UserLibraryService : BaseApiService
     {
-        /// <summary>
-        /// The _user manager
-        /// </summary>
         private readonly IUserManager _userManager;
-        /// <summary>
-        /// The _user data repository
-        /// </summary>
-        private readonly IUserDataRepository _userDataRepository;
-        /// <summary>
-        /// The _library manager
-        /// </summary>
+        private readonly IUserDataManager _userDataRepository;
         private readonly ILibraryManager _libraryManager;
+        private readonly IDtoService _dtoService;
+        private readonly IUserViewManager _userViewManager;
+        private readonly IFileSystem _fileSystem;
+        private readonly IAuthorizationContext _authContext;
 
-        private readonly IItemRepository _itemRepo;
-
-        private readonly ISessionManager _sessionManager;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="UserLibraryService" /> class.
-        /// </summary>
-        /// <param name="userManager">The user manager.</param>
-        /// <param name="libraryManager">The library manager.</param>
-        /// <param name="userDataRepository">The user data repository.</param>
-        /// <param name="itemRepo">The item repo.</param>
-        /// <exception cref="System.ArgumentNullException">jsonSerializer</exception>
-        public UserLibraryService(IUserManager userManager, ILibraryManager libraryManager, IUserDataRepository userDataRepository, IItemRepository itemRepo, ISessionManager sessionManager)
-            : base()
+        public UserLibraryService(IUserManager userManager, ILibraryManager libraryManager, IUserDataManager userDataRepository, IDtoService dtoService, IUserViewManager userViewManager, IFileSystem fileSystem, IAuthorizationContext authContext)
         {
             _userManager = userManager;
             _libraryManager = libraryManager;
             _userDataRepository = userDataRepository;
-            _itemRepo = itemRepo;
-            _sessionManager = sessionManager;
+            _dtoService = dtoService;
+            _userViewManager = userViewManager;
+            _fileSystem = fileSystem;
+            _authContext = authContext;
         }
 
         /// <summary>
@@ -388,20 +291,112 @@ namespace MediaBrowser.Api.UserLibrary
         /// <returns>System.Object.</returns>
         public object Get(GetSpecialFeatures request)
         {
+            var result = GetAsync(request);
+
+            return ToOptimizedSerializedResultUsingCache(result);
+        }
+
+        public object Get(GetLatestMedia request)
+        {
             var user = _userManager.GetUserById(request.UserId);
 
-            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
+            if (!request.IsPlayed.HasValue)
+            {
+                if (user.Configuration.HidePlayedInLatest)
+                {
+                    request.IsPlayed = false;
+                }
+            }
 
-            // Get everything
-            var fields = Enum.GetNames(typeof(ItemFields)).Select(i => (ItemFields)Enum.Parse(typeof(ItemFields), i, true)).ToList();
+            var list = _userViewManager.GetLatestItems(new LatestItemsQuery
+            {
+                GroupItems = request.GroupItems,
+                IncludeItemTypes = (request.IncludeItemTypes ?? string.Empty).Split(',').Where(i => !string.IsNullOrWhiteSpace(i)).ToArray(),
+                IsPlayed = request.IsPlayed,
+                Limit = request.Limit,
+                ParentId = request.ParentId,
+                UserId = request.UserId
+            });
 
-            var movie = (Movie)item;
+            var dtoOptions = GetDtoOptions(_authContext, request);
 
-            var dtoBuilder = new DtoBuilder(Logger, _libraryManager, _userDataRepository);
+            var dtos = list.Select(i =>
+            {
+                var item = i.Item2[0];
+                var childCount = 0;
 
-            var items = _itemRepo.GetItems(movie.SpecialFeatureIds).OrderBy(i => i.SortName).Select(i => dtoBuilder.GetBaseItemDto(i, fields, user)).Select(t => t.Result).ToList();
+                if (i.Item1 != null && (i.Item2.Count > 1 || i.Item1 is MusicAlbum))
+                {
+                    item = i.Item1;
+                    childCount = i.Item2.Count;
+                }
 
-            return ToOptimizedResult(items);
+                var dto = _dtoService.GetBaseItemDto(item, dtoOptions, user);
+
+                dto.ChildCount = childCount;
+
+                return dto;
+            });
+
+            return ToOptimizedResult(dtos.ToList());
+        }
+
+        private List<BaseItemDto> GetAsync(GetSpecialFeatures request)
+        {
+            var user = _userManager.GetUserById(request.UserId);
+
+            var item = string.IsNullOrEmpty(request.Id) ?
+                user.RootFolder :
+                _libraryManager.GetItemById(request.Id);
+
+            var series = item as Series;
+
+            // Get them from the child tree
+            if (series != null)
+            {
+                var dtoOptions = GetDtoOptions(_authContext, request);
+
+                // Avoid implicitly captured closure
+                var currentUser = user;
+
+                var dtos = series
+                    .GetEpisodes(user)
+                    .Where(i => i.ParentIndexNumber.HasValue && i.ParentIndexNumber.Value == 0)
+                    .OrderBy(i =>
+                    {
+                        if (i.PremiereDate.HasValue)
+                        {
+                            return i.PremiereDate.Value;
+                        }
+
+                        if (i.ProductionYear.HasValue)
+                        {
+                            return new DateTime(i.ProductionYear.Value, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                        }
+                        return DateTime.MinValue;
+                    })
+                    .ThenBy(i => i.SortName)
+                    .Select(i => _dtoService.GetBaseItemDto(i, dtoOptions, currentUser));
+
+                return dtos.ToList();
+            }
+
+            var movie = item as IHasSpecialFeatures;
+
+            // Get them from the db
+            if (movie != null)
+            {
+                var dtoOptions = GetDtoOptions(_authContext, request);
+
+                var dtos = movie.SpecialFeatureIds
+                    .Select(_libraryManager.GetItemById)
+                    .OrderBy(i => i.SortName)
+                    .Select(i => _dtoService.GetBaseItemDto(i, dtoOptions, user, item));
+
+                return dtos.ToList();
+            }
+
+            return new List<BaseItemDto>();
         }
 
         /// <summary>
@@ -413,16 +408,23 @@ namespace MediaBrowser.Api.UserLibrary
         {
             var user = _userManager.GetUserById(request.UserId);
 
-            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
+            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : _libraryManager.GetItemById(request.Id);
 
-            // Get everything
-            var fields = Enum.GetNames(typeof(ItemFields)).Select(i => (ItemFields)Enum.Parse(typeof(ItemFields), i, true)).ToList();
+            var trailerIds = new List<Guid>();
 
-            var dtoBuilder = new DtoBuilder(Logger, _libraryManager, _userDataRepository);
+            var hasTrailers = item as IHasTrailers;
+            if (hasTrailers != null)
+            {
+                trailerIds = hasTrailers.GetTrailerIds();
+            }
 
-            var items = _itemRepo.GetItems(item.LocalTrailerIds).OrderBy(i => i.SortName).Select(i => dtoBuilder.GetBaseItemDto(i, fields, user)).Select(t => t.Result).ToList();
+            var dtoOptions = GetDtoOptions(_authContext, request);
 
-            return ToOptimizedResult(items);
+            var dtos = trailerIds
+                .Select(_libraryManager.GetItemById)
+                .Select(i => _dtoService.GetBaseItemDto(i, dtoOptions, user, item));
+
+            return ToOptimizedSerializedResultUsingCache(dtos);
         }
 
         /// <summary>
@@ -430,20 +432,40 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <param name="request">The request.</param>
         /// <returns>System.Object.</returns>
-        public object Get(GetItem request)
+        public async Task<object> Get(GetItem request)
         {
             var user = _userManager.GetUserById(request.UserId);
 
-            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
+            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : _libraryManager.GetItemById(request.Id);
 
-            // Get everything
-            var fields = Enum.GetNames(typeof(ItemFields)).Select(i => (ItemFields)Enum.Parse(typeof(ItemFields), i, true)).ToList();
+            await RefreshItemOnDemandIfNeeded(item).ConfigureAwait(false);
 
-            var dtoBuilder = new DtoBuilder(Logger, _libraryManager, _userDataRepository);
+            var dtoOptions = GetDtoOptions(_authContext, request);
 
-            var result = dtoBuilder.GetBaseItemDto(item, fields, user).Result;
+            var result = _dtoService.GetBaseItemDto(item, dtoOptions, user);
 
-            return ToOptimizedResult(result);
+            return ToOptimizedSerializedResultUsingCache(result);
+        }
+
+        private async Task RefreshItemOnDemandIfNeeded(BaseItem item)
+        {
+            if (item is Person)
+            {
+                var hasMetdata = !string.IsNullOrWhiteSpace(item.Overview) && item.HasImage(ImageType.Primary);
+                var performFullRefresh = !hasMetdata && (DateTime.UtcNow - item.DateLastRefreshed).TotalDays >= 3;
+
+                if (!hasMetdata)
+                {
+                    var options = new MetadataRefreshOptions(_fileSystem)
+                    {
+                        MetadataRefreshMode = MetadataRefreshMode.FullRefresh,
+                        ImageRefreshMode = ImageRefreshMode.FullRefresh,
+                        ForceSave = performFullRefresh
+                    };
+
+                    await item.RefreshMetadata(options, CancellationToken.None).ConfigureAwait(false);
+                }
+            }
         }
 
         /// <summary>
@@ -457,14 +479,11 @@ namespace MediaBrowser.Api.UserLibrary
 
             var item = user.RootFolder;
 
-            // Get everything
-            var fields = Enum.GetNames(typeof(ItemFields)).Select(i => (ItemFields)Enum.Parse(typeof(ItemFields), i, true)).ToList();
+            var dtoOptions = GetDtoOptions(_authContext, request);
 
-            var dtoBuilder = new DtoBuilder(Logger, _libraryManager, _userDataRepository);
+            var result = _dtoService.GetBaseItemDto(item, dtoOptions, user);
 
-            var result = dtoBuilder.GetBaseItemDto(item, fields, user).Result;
-
-            return ToOptimizedResult(result);
+            return ToOptimizedSerializedResultUsingCache(result);
         }
 
         /// <summary>
@@ -472,203 +491,117 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <param name="request">The request.</param>
         /// <returns>System.Object.</returns>
-        public object Get(GetIntros request)
+        public async Task<object> Get(GetIntros request)
         {
             var user = _userManager.GetUserById(request.UserId);
 
-            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
+            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : _libraryManager.GetItemById(request.Id);
 
-            var result = _libraryManager.GetIntros(item, user);
+            var items = await _libraryManager.GetIntros(item, user).ConfigureAwait(false);
 
-            return ToOptimizedResult(result);
+            var dtoOptions = GetDtoOptions(_authContext, request);
+
+            var dtos = items.Select(i => _dtoService.GetBaseItemDto(i, dtoOptions, user))
+                .ToArray();
+
+            var result = new ItemsResult
+            {
+                Items = dtos,
+                TotalRecordCount = dtos.Length
+            };
+
+            return ToOptimizedSerializedResultUsingCache(result);
         }
 
         /// <summary>
         /// Posts the specified request.
         /// </summary>
         /// <param name="request">The request.</param>
-        public void Post(MarkFavoriteItem request)
+        public async Task<object> Post(MarkFavoriteItem request)
         {
-            var user = _userManager.GetUserById(request.UserId);
+            var dto = await MarkFavorite(request.UserId, request.Id, true).ConfigureAwait(false);
 
-            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
-
-            // Get the user data for this item
-            var key = item.GetUserDataKey();
-
-            var data = _userDataRepository.GetUserData(user.Id, key).Result;
-
-            // Set favorite status
-            data.IsFavorite = true;
-
-            var task = _userDataRepository.SaveUserData(user.Id, key, data, CancellationToken.None);
-
-            Task.WaitAll(task);
+            return ToOptimizedResult(dto);
         }
 
         /// <summary>
         /// Deletes the specified request.
         /// </summary>
         /// <param name="request">The request.</param>
-        public void Delete(UnmarkFavoriteItem request)
+        public object Delete(UnmarkFavoriteItem request)
         {
-            var user = _userManager.GetUserById(request.UserId);
+            var dto = MarkFavorite(request.UserId, request.Id, false).Result;
 
-            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
-
-            var key = item.GetUserDataKey();
-
-            // Get the user data for this item
-            var data = _userDataRepository.GetUserData(user.Id, key).Result;
-
-            // Set favorite status
-            data.IsFavorite = false;
-
-            var task = _userDataRepository.SaveUserData(user.Id, key, data, CancellationToken.None);
-
-            Task.WaitAll(task);
+            return ToOptimizedResult(dto);
         }
 
         /// <summary>
-        /// Deletes the specified request.
+        /// Marks the favorite.
         /// </summary>
-        /// <param name="request">The request.</param>
-        public void Delete(DeleteUserItemRating request)
-        {
-            var user = _userManager.GetUserById(request.UserId);
-
-            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
-
-            var key = item.GetUserDataKey();
-
-            // Get the user data for this item
-            var data = _userDataRepository.GetUserData(user.Id, key).Result;
-
-            data.Rating = null;
-
-            var task = _userDataRepository.SaveUserData(user.Id, key, data, CancellationToken.None);
-
-            Task.WaitAll(task);
-        }
-
-        /// <summary>
-        /// Posts the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        public void Post(UpdateUserItemRating request)
-        {
-            var user = _userManager.GetUserById(request.UserId);
-
-            var item = string.IsNullOrEmpty(request.Id) ? user.RootFolder : DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
-
-            var key = item.GetUserDataKey();
-
-            // Get the user data for this item
-            var data = _userDataRepository.GetUserData(user.Id, key).Result;
-
-            data.Likes = request.Likes;
-
-            var task = _userDataRepository.SaveUserData(user.Id, key, data, CancellationToken.None);
-
-            Task.WaitAll(task);
-        }
-
-        /// <summary>
-        /// Posts the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        public void Post(MarkPlayedItem request)
-        {
-            var user = _userManager.GetUserById(request.UserId);
-
-            var task = UpdatePlayedStatus(user, request.Id, true);
-
-            Task.WaitAll(task);
-        }
-
-        /// <summary>
-        /// Posts the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        public void Post(OnPlaybackStart request)
-        {
-            var user = _userManager.GetUserById(request.UserId);
-
-            var item = DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
-
-            var auth = RequestFilterAttribute.GetAuthorization(RequestContext);
-
-            if (auth != null)
-            {
-                _sessionManager.OnPlaybackStart(user, item, auth["Client"], auth["DeviceId"], auth["Device"] ?? string.Empty);
-            }
-        }
-
-        /// <summary>
-        /// Posts the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        public void Post(OnPlaybackProgress request)
-        {
-            var user = _userManager.GetUserById(request.UserId);
-
-            var item = DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
-
-            var auth = RequestFilterAttribute.GetAuthorization(RequestContext);
-
-            if (auth != null)
-            {
-                var task = _sessionManager.OnPlaybackProgress(user, item, request.PositionTicks, request.IsPaused, auth["Client"], auth["DeviceId"], auth["Device"] ?? string.Empty);
-
-                Task.WaitAll(task);
-            }
-        }
-
-        /// <summary>
-        /// Posts the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        public void Delete(OnPlaybackStopped request)
-        {
-            var user = _userManager.GetUserById(request.UserId);
-
-            var item = DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager, user.Id);
-
-            var auth = RequestFilterAttribute.GetAuthorization(RequestContext);
-
-            if (auth != null)
-            {
-                var task = _sessionManager.OnPlaybackStopped(user, item, request.PositionTicks, auth["Client"], auth["DeviceId"], auth["Device"] ?? string.Empty);
-
-                Task.WaitAll(task);
-            }
-        }
-
-        /// <summary>
-        /// Deletes the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        public void Delete(MarkUnplayedItem request)
-        {
-            var user = _userManager.GetUserById(request.UserId);
-
-            var task = UpdatePlayedStatus(user, request.Id, false);
-
-            Task.WaitAll(task);
-        }
-
-        /// <summary>
-        /// Updates the played status.
-        /// </summary>
-        /// <param name="user">The user.</param>
+        /// <param name="userId">The user id.</param>
         /// <param name="itemId">The item id.</param>
-        /// <param name="wasPlayed">if set to <c>true</c> [was played].</param>
-        /// <returns>Task.</returns>
-        private Task UpdatePlayedStatus(User user, string itemId, bool wasPlayed)
+        /// <param name="isFavorite">if set to <c>true</c> [is favorite].</param>
+        /// <returns>Task{UserItemDataDto}.</returns>
+        private async Task<UserItemDataDto> MarkFavorite(string userId, string itemId, bool isFavorite)
         {
-            var item = DtoBuilder.GetItemByClientId(itemId, _userManager, _libraryManager, user.Id);
+            var user = _userManager.GetUserById(userId);
 
-            return item.SetPlayedStatus(user, wasPlayed, _userDataRepository);
+            var item = string.IsNullOrEmpty(itemId) ? user.RootFolder : _libraryManager.GetItemById(itemId);
+
+            // Get the user data for this item
+            var data = _userDataRepository.GetUserData(user, item);
+
+            // Set favorite status
+            data.IsFavorite = isFavorite;
+
+            await _userDataRepository.SaveUserData(user.Id, item, data, UserDataSaveReason.UpdateUserRating, CancellationToken.None).ConfigureAwait(false);
+
+            return await _userDataRepository.GetUserDataDto(item, user).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Deletes the specified request.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        public object Delete(DeleteUserItemRating request)
+        {
+            var dto = UpdateUserItemRating(request.UserId, request.Id, null).Result;
+
+            return ToOptimizedResult(dto);
+        }
+
+        /// <summary>
+        /// Posts the specified request.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        public async Task<object> Post(UpdateUserItemRating request)
+        {
+            var dto = await UpdateUserItemRating(request.UserId, request.Id, request.Likes).ConfigureAwait(false);
+
+            return ToOptimizedResult(dto);
+        }
+
+        /// <summary>
+        /// Updates the user item rating.
+        /// </summary>
+        /// <param name="userId">The user id.</param>
+        /// <param name="itemId">The item id.</param>
+        /// <param name="likes">if set to <c>true</c> [likes].</param>
+        /// <returns>Task{UserItemDataDto}.</returns>
+        private async Task<UserItemDataDto> UpdateUserItemRating(string userId, string itemId, bool? likes)
+        {
+            var user = _userManager.GetUserById(userId);
+
+            var item = string.IsNullOrEmpty(itemId) ? user.RootFolder : _libraryManager.GetItemById(itemId);
+
+            // Get the user data for this item
+            var data = _userDataRepository.GetUserData(user, item);
+
+            data.Likes = likes;
+
+            await _userDataRepository.SaveUserData(user.Id, item, data, UserDataSaveReason.UpdateUserRating, CancellationToken.None).ConfigureAwait(false);
+
+            return await _userDataRepository.GetUserDataDto(item, user).ConfigureAwait(false);
         }
     }
 }

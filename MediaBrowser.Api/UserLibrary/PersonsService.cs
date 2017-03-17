@@ -1,62 +1,27 @@
 ﻿using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
-using MediaBrowser.Controller.Entities.Audio;
-using MediaBrowser.Controller.Entities.Movies;
-using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Net;
 using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Model.Dto;
-using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.Querying;
-using ServiceStack.ServiceHost;
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
+using MediaBrowser.Model.Services;
 
 namespace MediaBrowser.Api.UserLibrary
 {
     /// <summary>
     /// Class GetPersons
     /// </summary>
-    [Route("/Persons", "GET")]
-    [Api(Description = "Gets all persons from a given item, folder, or the entire library")]
+    [Route("/Persons", "GET", Summary = "Gets all persons from a given item, folder, or the entire library")]
     public class GetPersons : GetItemsByName
     {
-        /// <summary>
-        /// Gets or sets the person types.
-        /// </summary>
-        /// <value>The person types.</value>
-        public string PersonTypes { get; set; }
-    }
-
-    /// <summary>
-    /// Class GetPersonItemCounts
-    /// </summary>
-    [Route("/Persons/{Name}/Counts", "GET")]
-    [Api(Description = "Gets item counts of library items that a person appears in")]
-    public class GetPersonItemCounts : IReturn<ItemByNameCounts>
-    {
-        /// <summary>
-        /// Gets or sets the user id.
-        /// </summary>
-        /// <value>The user id.</value>
-        [ApiMember(Name = "UserId", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public Guid UserId { get; set; }
-
-        /// <summary>
-        /// Gets or sets the name.
-        /// </summary>
-        /// <value>The name.</value>
-        [ApiMember(Name = "Name", Description = "The person name", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public string Name { get; set; }
     }
 
     /// <summary>
     /// Class GetPerson
     /// </summary>
-    [Route("/Persons/{Name}", "GET")]
-    [Api(Description = "Gets a person, by name")]
+    [Route("/Persons/{Name}", "GET", Summary = "Gets a person, by name")]
     public class GetPerson : IReturn<BaseItemDto>
     {
         /// <summary>
@@ -71,25 +36,15 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "Optional. Filter by user id, and attach user data", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public Guid? UserId { get; set; }
+        public string UserId { get; set; }
     }
 
     /// <summary>
     /// Class PersonsService
     /// </summary>
+    [Authenticated]
     public class PersonsService : BaseItemsByNameService<Person>
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="PersonsService"/> class.
-        /// </summary>
-        /// <param name="userManager">The user manager.</param>
-        /// <param name="libraryManager">The library manager.</param>
-        /// <param name="userDataRepository">The user data repository.</param>
-        public PersonsService(IUserManager userManager, ILibraryManager libraryManager, IUserDataRepository userDataRepository)
-            : base(userManager, libraryManager, userDataRepository)
-        {
-        }
-
         /// <summary>
         /// Gets the specified request.
         /// </summary>
@@ -97,9 +52,9 @@ namespace MediaBrowser.Api.UserLibrary
         /// <returns>System.Object.</returns>
         public object Get(GetPerson request)
         {
-            var result = GetItem(request).Result;
+            var result = GetItem(request);
 
-            return ToOptimizedResult(result);
+            return ToOptimizedSerializedResultUsingCache(result);
         }
 
         /// <summary>
@@ -107,23 +62,20 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <param name="request">The request.</param>
         /// <returns>Task{BaseItemDto}.</returns>
-        private async Task<BaseItemDto> GetItem(GetPerson request)
+        private BaseItemDto GetItem(GetPerson request)
         {
-            var item = await GetPerson(request.Name, LibraryManager).ConfigureAwait(false);
+            var item = GetPerson(request.Name, LibraryManager);
+            
+            var dtoOptions = GetDtoOptions(AuthorizationContext, request);
 
-            // Get everything
-            var fields = Enum.GetNames(typeof(ItemFields)).Select(i => (ItemFields)Enum.Parse(typeof(ItemFields), i, true));
-
-            var builder = new DtoBuilder(Logger, LibraryManager, UserDataRepository);
-
-            if (request.UserId.HasValue)
+            if (!string.IsNullOrWhiteSpace(request.UserId))
             {
-                var user = UserManager.GetUserById(request.UserId.Value);
+                var user = UserManager.GetUserById(request.UserId);
 
-                return await builder.GetBaseItemDto(item, fields.ToList(), user).ConfigureAwait(false);
+                return DtoService.GetBaseItemDto(item, dtoOptions, user);
             }
 
-            return await builder.GetBaseItemDto(item, fields.ToList()).ConfigureAwait(false);
+            return DtoService.GetBaseItemDto(item, dtoOptions);
         }
 
         /// <summary>
@@ -133,44 +85,9 @@ namespace MediaBrowser.Api.UserLibrary
         /// <returns>System.Object.</returns>
         public object Get(GetPersons request)
         {
-            var result = GetResult(request).Result;
+            var result = GetResult(request);
 
-            return ToOptimizedResult(result);
-        }
-
-        /// <summary>
-        /// Gets the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>System.Object.</returns>
-        public object Get(GetPersonItemCounts request)
-        {
-            var name = DeSlugPersonName(request.Name, LibraryManager);
-
-            var items = GetItems(request.UserId).Where(i => i.People != null && i.People.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))).ToList();
-
-            var counts = new ItemByNameCounts
-            {
-                TotalCount = items.Count,
-
-                TrailerCount = items.OfType<Trailer>().Count(),
-
-                MovieCount = items.OfType<Movie>().Count(),
-
-                SeriesCount = items.OfType<Series>().Count(),
-
-                GameCount = items.OfType<BaseGame>().Count(),
-
-                SongCount = items.OfType<Audio>().Count(),
-
-                AlbumCount = items.OfType<MusicAlbum>().Count(),
-
-                EpisodeCount = items.OfType<Episode>().Count(),
-
-                MusicVideoCount = items.OfType<MusicVideo>().Count()
-            };
-
-            return ToOptimizedResult(counts);
+            return ToOptimizedSerializedResultUsingCache(result);
         }
 
         /// <summary>
@@ -179,30 +96,34 @@ namespace MediaBrowser.Api.UserLibrary
         /// <param name="request">The request.</param>
         /// <param name="items">The items.</param>
         /// <returns>IEnumerable{Tuple{System.StringFunc{System.Int32}}}.</returns>
-        protected override IEnumerable<IbnStub<Person>> GetAllItems(GetItemsByName request, IEnumerable<BaseItem> items)
+        protected override IEnumerable<BaseItem> GetAllItems(GetItemsByName request, IEnumerable<BaseItem> items)
         {
             var inputPersonTypes = ((GetPersons)request).PersonTypes;
             var personTypes = string.IsNullOrEmpty(inputPersonTypes) ? new string[] { } : inputPersonTypes.Split(',');
 
-            var itemsList = items.Where(i => i.People != null).ToList();
+            var itemsList = items.ToList();
 
             // Either get all people, or all people filtered by a specific person type
             var allPeople = GetAllPeople(itemsList, personTypes);
 
             return allPeople
                 .Select(i => i.Name)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .DistinctNames()
 
-                .Select(name => new IbnStub<Person>(name, () =>
+                .Select(name =>
                 {
-                    if (personTypes.Length == 0)
+                    try
                     {
-                        return itemsList.Where(i => i.People.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+                        return LibraryManager.GetPerson(name);
                     }
+                    catch
+                    {
+                        return null;
+                        // Already logged at lower levels
+                    }
+                }
 
-                    return itemsList.Where(i => i.People.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && personTypes.Contains(p.Type ?? string.Empty, StringComparer.OrdinalIgnoreCase)));
-                }, GetEntity)
-            );
+            ).Where(i => i != null);
         }
 
         /// <summary>
@@ -211,25 +132,20 @@ namespace MediaBrowser.Api.UserLibrary
         /// <param name="itemsList">The items list.</param>
         /// <param name="personTypes">The person types.</param>
         /// <returns>IEnumerable{PersonInfo}.</returns>
-        private IEnumerable<PersonInfo> GetAllPeople(IEnumerable<BaseItem> itemsList, string[] personTypes)
+        private IEnumerable<PersonInfo> GetAllPeople(IEnumerable<BaseItem> itemsList, IEnumerable<string> personTypes)
         {
-            var people = itemsList.SelectMany(i => i.People.OrderBy(p => p.Type));
+            var allIds = itemsList.Select(i => i.Id).ToList();
 
-            return personTypes.Length == 0 ?
+            var allPeople = LibraryManager.GetPeople(new InternalPeopleQuery
+            {
+                PersonTypes = personTypes.ToList()
+            });
 
-                people :
-
-                people.Where(p => personTypes.Contains(p.Type ?? string.Empty, StringComparer.OrdinalIgnoreCase));
+            return allPeople.Where(i => allIds.Contains(i.ItemId)).OrderBy(p => p.SortOrder ?? int.MaxValue).ThenBy(p => p.Type);
         }
 
-        /// <summary>
-        /// Gets the entity.
-        /// </summary>
-        /// <param name="name">The name.</param>
-        /// <returns>Task{Genre}.</returns>
-        protected Task<Person> GetEntity(string name)
+        public PersonsService(IUserManager userManager, ILibraryManager libraryManager, IUserDataManager userDataRepository, IItemRepository itemRepository, IDtoService dtoService, IAuthorizationContext authorizationContext) : base(userManager, libraryManager, userDataRepository, itemRepository, dtoService, authorizationContext)
         {
-            return LibraryManager.GetPerson(name);
         }
     }
 }

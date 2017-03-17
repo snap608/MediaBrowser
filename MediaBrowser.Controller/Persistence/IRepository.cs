@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Threading.Tasks;
 
 namespace MediaBrowser.Controller.Persistence
 {
@@ -8,12 +7,6 @@ namespace MediaBrowser.Controller.Persistence
     /// </summary>
     public interface IRepository : IDisposable
     {
-        /// <summary>
-        /// Opens the connection to the repository
-        /// </summary>
-        /// <returns>Task.</returns>
-        Task Initialize();
-
         /// <summary>
         /// Gets the name of the repository
         /// </summary>

@@ -1,6 +1,5 @@
-﻿using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.Weather;
-using System;
+﻿using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.Entities;
 
 namespace MediaBrowser.Model.Configuration
 {
@@ -9,11 +8,26 @@ namespace MediaBrowser.Model.Configuration
     /// </summary>
     public class ServerConfiguration : BaseApplicationConfiguration
     {
+        public const int DefaultHttpPort = 8096;
+        public const int DefaultHttpsPort = 8920;
+
         /// <summary>
-        /// Gets or sets a value indicating whether [enable HTTP level logging].
+        /// Gets or sets a value indicating whether [enable u pn p].
         /// </summary>
-        /// <value><c>true</c> if [enable HTTP level logging]; otherwise, <c>false</c>.</value>
-        public bool EnableHttpLevelLogging { get; set; }
+        /// <value><c>true</c> if [enable u pn p]; otherwise, <c>false</c>.</value>
+        public bool EnableUPnP { get; set; }
+
+        /// <summary>
+        /// Gets or sets the public mapped port.
+        /// </summary>
+        /// <value>The public mapped port.</value>
+        public int PublicPort { get; set; }
+
+        /// <summary>
+        /// Gets or sets the public HTTPS port.
+        /// </summary>
+        /// <value>The public HTTPS port.</value>
+        public int PublicHttpsPort { get; set; }
 
         /// <summary>
         /// Gets or sets the HTTP server port number.
@@ -22,58 +36,51 @@ namespace MediaBrowser.Model.Configuration
         public int HttpServerPortNumber { get; set; }
 
         /// <summary>
-        /// Gets or sets the legacy web socket port number.
+        /// Gets or sets the HTTPS server port number.
         /// </summary>
-        /// <value>The legacy web socket port number.</value>
-        public int LegacyWebSocketPortNumber { get; set; }
+        /// <value>The HTTPS server port number.</value>
+        public int HttpsPortNumber { get; set; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether [enable internet providers].
+        /// Gets or sets a value indicating whether [use HTTPS].
         /// </summary>
-        /// <value><c>true</c> if [enable internet providers]; otherwise, <c>false</c>.</value>
-        public bool EnableInternetProviders { get; set; }
+        /// <value><c>true</c> if [use HTTPS]; otherwise, <c>false</c>.</value>
+        public bool EnableHttps { get; set; }
+        public bool EnableSeriesPresentationUniqueKey { get; set; }
+        public bool EnableLocalizedGuids { get; set; }
 
         /// <summary>
-        /// Gets or sets the zip code to use when displaying weather
+        /// Gets or sets the value pointing to the file system where the ssl certiifcate is located..
         /// </summary>
-        /// <value>The weather location.</value>
-        public string WeatherLocation { get; set; }
+        /// <value>The value pointing to the file system where the ssl certiifcate is located..</value>
+        public string CertificatePath { get; set; }
 
         /// <summary>
-        /// Gets or sets the item by name path.
+        /// Gets or sets a value indicating whether this instance is port authorized.
         /// </summary>
-        /// <value>The item by name path.</value>
-        public string ItemsByNamePath { get; set; }
+        /// <value><c>true</c> if this instance is port authorized; otherwise, <c>false</c>.</value>
+        public bool IsPortAuthorized { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether [enable case sensitive item ids].
+        /// </summary>
+        /// <value><c>true</c> if [enable case sensitive item ids]; otherwise, <c>false</c>.</value>
+        public bool EnableCaseSensitiveItemIds { get; set; }
+
+        /// <summary>
+        /// Gets or sets the metadata path.
+        /// </summary>
+        /// <value>The metadata path.</value>
+        public string MetadataPath { get; set; }
+        public string MetadataNetworkPath { get; set; }
+
+        public string LastVersion { get; set; }
 
         /// <summary>
         /// Gets or sets the display name of the season zero.
         /// </summary>
         /// <value>The display name of the season zero.</value>
         public string SeasonZeroDisplayName { get; set; }
-        
-        /// <summary>
-        /// Gets or sets the weather unit to use when displaying weather
-        /// </summary>
-        /// <value>The weather unit.</value>
-        public WeatherUnits WeatherUnit { get; set; }
-
-        /// <summary>
-        /// Gets or sets the metadata refresh days.
-        /// </summary>
-        /// <value>The metadata refresh days.</value>
-        public int MetadataRefreshDays { get; set; }
-
-        /// <summary>
-        /// Gets or sets a value indicating whether [save local meta].
-        /// </summary>
-        /// <value><c>true</c> if [save local meta]; otherwise, <c>false</c>.</value>
-        public bool SaveLocalMeta { get; set; }
-
-        /// <summary>
-        /// Gets or sets a value indicating whether [refresh item images].
-        /// </summary>
-        /// <value><c>true</c> if [refresh item images]; otherwise, <c>false</c>.</value>
-        public bool RefreshItemImages { get; set; }
 
         /// <summary>
         /// Gets or sets the preferred metadata language.
@@ -86,61 +93,6 @@ namespace MediaBrowser.Model.Configuration
         /// </summary>
         /// <value>The metadata country code.</value>
         public string MetadataCountryCode { get; set; }
-
-        /// <summary>
-        /// Gets or sets the size of the TMDB fetched poster.
-        /// </summary>
-        /// <value>The size of the TMDB fetched poster.</value>
-        public string TmdbFetchedPosterSize { get; set; }
-
-        /// <summary>
-        /// Gets or sets the size of the TMDB fetched profile.
-        /// </summary>
-        /// <value>The size of the TMDB fetched profile.</value>
-        public string TmdbFetchedProfileSize { get; set; }
-
-        /// <summary>
-        /// Gets or sets the size of the TMDB fetched backdrop.
-        /// </summary>
-        /// <value>The size of the TMDB fetched backdrop.</value>
-        public string TmdbFetchedBackdropSize { get; set; }
-
-        /// <summary>
-        /// Gets or sets the max backdrops.
-        /// </summary>
-        /// <value>The max backdrops.</value>
-        public int MaxBackdrops { get; set; }
-
-        /// <summary>
-        /// Options for specific art to download for movies.
-        /// </summary>
-        public ImageDownloadOptions DownloadMovieImages { get; set; }
-
-        /// <summary>
-        /// Options for specific art to download for Series.
-        /// </summary>
-        public ImageDownloadOptions DownloadSeriesImages { get; set; }
-
-        /// <summary>
-        /// Options for specific art to download for Seasons.
-        /// </summary>
-        public ImageDownloadOptions DownloadSeasonImages { get; set; }
-
-        /// <summary>
-        /// Options for specific art to download for MusicArtists.
-        /// </summary>
-        public ImageDownloadOptions DownloadMusicArtistImages { get; set; }
-
-        /// <summary>
-        /// Options for specific art to download for MusicAlbums.
-        /// </summary>
-        public ImageDownloadOptions DownloadMusicAlbumImages { get; set; }
-
-        /// <summary>
-        /// Gets or sets a value indicating whether [download TV season backdrops].
-        /// </summary>
-        /// <value><c>true</c> if [download TV season banner]; otherwise, <c>false</c>.</value>
-        public bool DownloadHDFanArt { get; set; }
 
         /// <summary>
         /// Characters to be replaced with a ' ' in strings to create a sort name
@@ -159,24 +111,6 @@ namespace MediaBrowser.Model.Configuration
         /// </summary>
         /// <value>The sort remove words.</value>
         public string[] SortRemoveWords { get; set; }
-
-        /// <summary>
-        /// Show an output log window for debugging
-        /// </summary>
-        /// <value><c>true</c> if [show log window]; otherwise, <c>false</c>.</value>
-        public bool ShowLogWindow { get; set; }
-
-        /// <summary>
-        /// The list of types that will NOT be allowed to have internet providers run against them even if they are turned on.
-        /// </summary>
-        /// <value>The internet provider exclude types.</value>
-        public string[] InternetProviderExcludeTypes { get; set; }
-
-        /// <summary>
-        /// Gets or sets the recent item days.
-        /// </summary>
-        /// <value>The recent item days.</value>
-        public int RecentItemDays { get; set; }
 
         /// <summary>
         /// Gets or sets the minimum percentage of an item that must be played in order for playstate to be updated.
@@ -202,13 +136,7 @@ namespace MediaBrowser.Model.Configuration
         /// different directories and files.
         /// </summary>
         /// <value>The file watcher delay.</value>
-        public int FileWatcherDelay { get; set; }
-
-        /// <summary>
-        /// Gets or sets a value indicating whether [enable developer tools].
-        /// </summary>
-        /// <value><c>true</c> if [enable developer tools]; otherwise, <c>false</c>.</value>
-        public bool EnableDeveloperTools { get; set; }
+        public int LibraryMonitorDelay { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether [enable dashboard response caching].
@@ -224,50 +152,427 @@ namespace MediaBrowser.Model.Configuration
         public string DashboardSourcePath { get; set; }
 
         /// <summary>
+        /// Gets or sets the image saving convention.
+        /// </summary>
+        /// <value>The image saving convention.</value>
+        public ImageSavingConvention ImageSavingConvention { get; set; }
+
+        public MetadataOptions[] MetadataOptions { get; set; }
+
+        public bool EnableAutomaticRestart { get; set; }
+        public bool SkipDeserializationForBasicTypes { get; set; }
+        public bool SkipDeserializationForPrograms { get; set; }
+        public bool SkipDeserializationForAudio { get; set; }
+
+        public string ServerName { get; set; }
+        public string WanDdns { get; set; }
+
+        public string UICulture { get; set; }
+
+        public bool SaveMetadataHidden { get; set; }
+
+        public NameValuePair[] ContentTypes { get; set; }
+
+        public int RemoteClientBitrateLimit { get; set; }
+
+        public int SharingExpirationDays { get; set; }
+
+        public int SchemaVersion { get; set; }
+
+        public bool EnableAnonymousUsageReporting { get; set; }
+        public bool EnableStandaloneMusicKeys { get; set; }
+        public bool EnableFolderView { get; set; }
+        public bool EnableGroupingIntoCollections { get; set; }
+        public bool DisplaySpecialsWithinSeasons { get; set; }
+        public bool DisplayCollectionsView { get; set; }
+        public string[] LocalNetworkAddresses { get; set; }
+        public string[] CodecsUsed { get; set; }
+        public string[] Migrations { get; set; }
+        public bool EnableChannelView { get; set; }
+        public bool EnableExternalContentInSuggestions { get; set; }
+
+        public int ImageExtractionTimeoutMs { get; set; }
+
+        public PathSubstitution[] PathSubstitutions { get; set; }
+        public bool EnableSimpleArtistDetection { get; set; }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="ServerConfiguration" /> class.
         /// </summary>
         public ServerConfiguration()
-            : base()
         {
-            HttpServerPortNumber = 8096;
-            LegacyWebSocketPortNumber = 8945;
-            EnableHttpLevelLogging = true;
+            LocalNetworkAddresses = new string[] { };
+            CodecsUsed = new string[] { };
+            Migrations = new string[] { };
+            ImageExtractionTimeoutMs = 0;
+            EnableLocalizedGuids = true;
+            PathSubstitutions = new PathSubstitution[] { };
+            EnableSimpleArtistDetection = true;
+
+            DisplaySpecialsWithinSeasons = true;
+            EnableExternalContentInSuggestions = true;
+
+            ImageSavingConvention = ImageSavingConvention.Compatible;
+            PublicPort = DefaultHttpPort;
+            PublicHttpsPort = DefaultHttpsPort;
+            HttpServerPortNumber = DefaultHttpPort;
+            HttpsPortNumber = DefaultHttpsPort;
+            EnableHttps = false;
             EnableDashboardResponseCaching = true;
+            EnableAnonymousUsageReporting = true;
 
-#if (DEBUG)
-            EnableDeveloperTools = true;
-#endif
+            EnableAutomaticRestart = true;
+            EnableFolderView = true;
 
+            EnableUPnP = true;
+            SharingExpirationDays = 30;
             MinResumePct = 5;
             MaxResumePct = 90;
-            MinResumeDurationSeconds = Convert.ToInt32(TimeSpan.FromMinutes(5).TotalSeconds);
 
-            FileWatcherDelay = 8;
+            // 5 minutes
+            MinResumeDurationSeconds = 300;
 
-            RecentItemDays = 10;
+            LibraryMonitorDelay = 60;
 
-            EnableInternetProviders = true; //initial installs will need these
-            InternetProviderExcludeTypes = new string[] { };
+            ContentTypes = new NameValuePair[] { };
 
-            MetadataRefreshDays = 30;
             PreferredMetadataLanguage = "en";
             MetadataCountryCode = "US";
-            TmdbFetchedProfileSize = "original"; //w185 w45 h632 or original
-            TmdbFetchedPosterSize = "original"; //w500, w342, w185 or original
-            TmdbFetchedBackdropSize = "original"; //w1280, w780 or original
-            DownloadMovieImages = new ImageDownloadOptions();
-            DownloadSeriesImages = new ImageDownloadOptions();
-            DownloadSeasonImages = new ImageDownloadOptions();
-            DownloadMusicArtistImages = new ImageDownloadOptions();
-            DownloadMusicAlbumImages = new ImageDownloadOptions();
-            DownloadHDFanArt = true;
-            MaxBackdrops = 3;
 
             SortReplaceCharacters = new[] { ".", "+", "%" };
             SortRemoveCharacters = new[] { ",", "&", "-", "{", "}", "'" };
             SortRemoveWords = new[] { "the", "a", "an" };
 
             SeasonZeroDisplayName = "Specials";
+
+            UICulture = "en-us";
+
+            MetadataOptions = new[]
+            {
+                new MetadataOptions(1, 1280) {ItemType = "Book"},
+
+                new MetadataOptions(1, 1280)
+                {
+                    ItemType = "Movie",
+                    ImageOptions = new []
+                    {
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            MinWidth = 1280,
+                            Type = ImageType.Backdrop
+                        },
+
+                        // Don't download this by default as it's rarely used.
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Art
+                        },
+
+                        // Don't download this by default as it's rarely used.
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Disc
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Primary
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Banner
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Thumb
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Logo
+                        }
+                    }
+                },
+
+                new MetadataOptions(1, 1280)
+                {
+                    ItemType = "MusicVideo",
+                    ImageOptions = new []
+                    {
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            MinWidth = 1280,
+                            Type = ImageType.Backdrop
+                        },
+
+                        // Don't download this by default as it's rarely used.
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Art
+                        },
+
+                        // Don't download this by default as it's rarely used.
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Disc
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Primary
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Banner
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Thumb
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Logo
+                        }
+                    }
+                },
+
+                new MetadataOptions(1, 1280)
+                {
+                    ItemType = "Series",
+                    ImageOptions = new []
+                    {
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            MinWidth = 1280,
+                            Type = ImageType.Backdrop
+                        },
+
+                        // Don't download this by default as it's rarely used.
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Art
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Primary
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Banner
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Thumb
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Logo
+                        }
+                    }
+                },
+
+                new MetadataOptions(1, 1280)
+                {
+                    ItemType = "MusicAlbum",
+                    ImageOptions = new []
+                    {
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            MinWidth = 1280,
+                            Type = ImageType.Backdrop
+                        },
+
+                        // Don't download this by default as it's rarely used.
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Disc
+                        }
+                    },
+                    DisabledMetadataFetchers = new []{ "TheAudioDB" }
+                },
+
+                new MetadataOptions(1, 1280)
+                {
+                    ItemType = "MusicArtist",
+                    ImageOptions = new []
+                    {
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            MinWidth = 1280,
+                            Type = ImageType.Backdrop
+                        },
+
+                        // Don't download this by default
+                        // They do look great, but most artists won't have them, which means a banner view isn't really possible
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Banner
+                        },
+
+                        // Don't download this by default
+                        // Generally not used
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Art
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Logo
+                        }
+                    },
+                    DisabledMetadataFetchers = new []{ "TheAudioDB" }
+                },
+
+                new MetadataOptions(1, 1280)
+                {
+                    ItemType = "BoxSet",
+                    ImageOptions = new []
+                    {
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            MinWidth = 1280,
+                            Type = ImageType.Backdrop
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Primary
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Thumb
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Logo
+                        },
+
+                        // Don't download this by default as it's rarely used.
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Art
+                        },
+
+                        // Don't download this by default as it's rarely used.
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Disc
+                        },
+
+                        // Don't download this by default as it's rarely used.
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Banner
+                        }
+                    }
+                },
+
+                new MetadataOptions(0, 1280)
+                {
+                    ItemType = "Season",
+                    ImageOptions = new []
+                    {
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            MinWidth = 1280,
+                            Type = ImageType.Backdrop
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Primary
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Banner
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            Type = ImageType.Thumb
+                        }
+                    },
+                    DisabledMetadataFetchers = new []{ "TheMovieDb" }
+                },
+
+                new MetadataOptions(0, 1280)
+                {
+                    ItemType = "Episode",
+                    ImageOptions = new []
+                    {
+                        new ImageOption
+                        {
+                            Limit = 0,
+                            MinWidth = 1280,
+                            Type = ImageType.Backdrop
+                        },
+
+                        new ImageOption
+                        {
+                            Limit = 1,
+                            Type = ImageType.Primary
+                        }
+                    },
+                    DisabledMetadataFetchers = new []{ "The Open Movie Database", "TheMovieDb" },
+                    DisabledImageFetchers = new []{ "The Open Movie Database", "TheMovieDb" }
+                }
+            };
         }
+    }
+
+    public class PathSubstitution
+    {
+        public string From { get; set; }
+        public string To { get; set; }
     }
 }

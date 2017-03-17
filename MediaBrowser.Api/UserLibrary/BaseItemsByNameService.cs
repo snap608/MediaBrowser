@@ -2,14 +2,14 @@
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Persistence;
-using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Querying;
-using ServiceStack.ServiceHost;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
+using MediaBrowser.Controller.Net;
+using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.Services;
 
 namespace MediaBrowser.Api.UserLibrary
 {
@@ -18,7 +18,7 @@ namespace MediaBrowser.Api.UserLibrary
     /// </summary>
     /// <typeparam name="TItemType">The type of the T item type.</typeparam>
     public abstract class BaseItemsByNameService<TItemType> : BaseApiService
-        where TItemType : BaseItem
+        where TItemType : BaseItem, IItemByName
     {
         /// <summary>
         /// The _user manager
@@ -28,7 +28,10 @@ namespace MediaBrowser.Api.UserLibrary
         /// The library manager
         /// </summary>
         protected readonly ILibraryManager LibraryManager;
-        protected readonly IUserDataRepository UserDataRepository;
+        protected readonly IUserDataManager UserDataRepository;
+        protected readonly IItemRepository ItemRepository;
+        protected IDtoService DtoService { get; private set; }
+        protected IAuthorizationContext AuthorizationContext { get; private set; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="BaseItemsByNameService{TItemType}" /> class.
@@ -36,11 +39,199 @@ namespace MediaBrowser.Api.UserLibrary
         /// <param name="userManager">The user manager.</param>
         /// <param name="libraryManager">The library manager.</param>
         /// <param name="userDataRepository">The user data repository.</param>
-        protected BaseItemsByNameService(IUserManager userManager, ILibraryManager libraryManager, IUserDataRepository userDataRepository)
+        /// <param name="itemRepository">The item repository.</param>
+        /// <param name="dtoService">The dto service.</param>
+        protected BaseItemsByNameService(IUserManager userManager, ILibraryManager libraryManager, IUserDataManager userDataRepository, IItemRepository itemRepository, IDtoService dtoService, IAuthorizationContext authorizationContext)
         {
             UserManager = userManager;
             LibraryManager = libraryManager;
             UserDataRepository = userDataRepository;
+            ItemRepository = itemRepository;
+            DtoService = dtoService;
+            AuthorizationContext = authorizationContext;
+        }
+
+        protected BaseItem GetParentItem(GetItemsByName request)
+        {
+            BaseItem parentItem;
+
+            if (!string.IsNullOrWhiteSpace(request.UserId))
+            {
+                var user = UserManager.GetUserById(request.UserId);
+                parentItem = string.IsNullOrEmpty(request.ParentId) ? user.RootFolder : LibraryManager.GetItemById(request.ParentId);
+            }
+            else
+            {
+                parentItem = string.IsNullOrEmpty(request.ParentId) ? LibraryManager.RootFolder : LibraryManager.GetItemById(request.ParentId);
+            }
+
+            return parentItem;
+        }
+
+        protected string GetParentItemViewType(GetItemsByName request)
+        {
+            var parent = GetParentItem(request);
+
+            var collectionFolder = parent as ICollectionFolder;
+            if (collectionFolder != null)
+            {
+                return collectionFolder.CollectionType;
+            }
+
+            var view = parent as UserView;
+            if (view != null)
+            {
+                return view.ViewType;
+            }
+
+            return null;
+        }
+
+        protected ItemsResult GetResultSlim(GetItemsByName request)
+        {
+            var dtoOptions = GetDtoOptions(AuthorizationContext, request);
+
+            User user = null;
+            BaseItem parentItem;
+
+            if (!string.IsNullOrWhiteSpace(request.UserId))
+            {
+                user = UserManager.GetUserById(request.UserId);
+                parentItem = string.IsNullOrEmpty(request.ParentId) ? user.RootFolder : LibraryManager.GetItemById(request.ParentId);
+            }
+            else
+            {
+                parentItem = string.IsNullOrEmpty(request.ParentId) ? LibraryManager.RootFolder : LibraryManager.GetItemById(request.ParentId);
+            }
+
+            var excludeItemTypes = request.GetExcludeItemTypes();
+            var includeItemTypes = request.GetIncludeItemTypes();
+            var mediaTypes = request.GetMediaTypes();
+
+            var query = new InternalItemsQuery(user)
+            {
+                ExcludeItemTypes = excludeItemTypes,
+                IncludeItemTypes = includeItemTypes,
+                MediaTypes = mediaTypes,
+                StartIndex = request.StartIndex,
+                Limit = request.Limit,
+                IsFavorite = request.IsFavorite,
+                NameLessThan = request.NameLessThan,
+                NameStartsWith = request.NameStartsWith,
+                NameStartsWithOrGreater = request.NameStartsWithOrGreater,
+                AlbumArtistStartsWithOrGreater = request.AlbumArtistStartsWithOrGreater,
+                Tags = request.GetTags(),
+                OfficialRatings = request.GetOfficialRatings(),
+                Genres = request.GetGenres(),
+                GenreIds = request.GetGenreIds(),
+                StudioIds = request.GetStudioIds(),
+                Person = request.Person,
+                PersonIds = request.GetPersonIds(),
+                PersonTypes = request.GetPersonTypes(),
+                Years = request.GetYears(),
+                MinCommunityRating = request.MinCommunityRating
+            };
+
+            if (!string.IsNullOrWhiteSpace(request.ParentId))
+            {
+                if (parentItem is Folder)
+                {
+                    query.AncestorIds = new[] { request.ParentId };
+                }
+                else
+                {
+                    query.ItemIds = new[] { request.ParentId };
+                }
+            }
+
+            // Studios
+            if (!string.IsNullOrEmpty(request.Studios))
+            {
+                query.StudioIds = request.Studios.Split('|').Select(i =>
+                {
+                    try
+                    {
+                        return LibraryManager.GetStudio(i);
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                }).Where(i => i != null).Select(i => i.Id.ToString("N")).ToArray();
+            }
+
+            foreach (var filter in request.GetFilters())
+            {
+                switch (filter)
+                {
+                    case ItemFilter.Dislikes:
+                        query.IsLiked = false;
+                        break;
+                    case ItemFilter.IsFavorite:
+                        query.IsFavorite = true;
+                        break;
+                    case ItemFilter.IsFavoriteOrLikes:
+                        query.IsFavoriteOrLiked = true;
+                        break;
+                    case ItemFilter.IsFolder:
+                        query.IsFolder = true;
+                        break;
+                    case ItemFilter.IsNotFolder:
+                        query.IsFolder = false;
+                        break;
+                    case ItemFilter.IsPlayed:
+                        query.IsPlayed = true;
+                        break;
+                    case ItemFilter.IsResumable:
+                        query.IsResumable = true;
+                        break;
+                    case ItemFilter.IsUnplayed:
+                        query.IsPlayed = false;
+                        break;
+                    case ItemFilter.Likes:
+                        query.IsLiked = true;
+                        break;
+                }
+            }
+
+            var result = GetItems(request, query);
+
+            var syncProgess = DtoService.GetSyncedItemProgress(dtoOptions);
+            var dtos = result.Items.Select(i =>
+            {
+                var dto = DtoService.GetItemByNameDto(i.Item1, dtoOptions, null, syncProgess, user);
+
+                if (!string.IsNullOrWhiteSpace(request.IncludeItemTypes))
+                {
+                    SetItemCounts(dto, i.Item2);
+                }
+                return dto;
+            });
+
+            return new ItemsResult
+            {
+                Items = dtos.ToArray(),
+                TotalRecordCount = result.TotalRecordCount
+            };
+        }
+
+        protected virtual QueryResult<Tuple<BaseItem, ItemCounts>> GetItems(GetItemsByName request, InternalItemsQuery query)
+        {
+            return new QueryResult<Tuple<BaseItem, ItemCounts>>();
+        }
+
+        private void SetItemCounts(BaseItemDto dto, ItemCounts counts)
+        {
+            dto.ChildCount = counts.ItemCount;
+            dto.ProgramCount = counts.ProgramCount;
+            dto.SeriesCount = counts.SeriesCount;
+            dto.EpisodeCount = counts.EpisodeCount;
+            dto.MovieCount = counts.MovieCount;
+            dto.TrailerCount = counts.TrailerCount;
+            dto.AlbumCount = counts.AlbumCount;
+            dto.SongCount = counts.SongCount;
+            dto.GameCount = counts.GameCount;
+            dto.ArtistCount = counts.ArtistCount;
         }
 
         /// <summary>
@@ -48,55 +239,73 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <param name="request">The request.</param>
         /// <returns>Task{ItemsResult}.</returns>
-        protected async Task<ItemsResult> GetResult(GetItemsByName request)
+        protected ItemsResult GetResult(GetItemsByName request)
         {
-            User user = null;
-            BaseItem item;
+            var dtoOptions = GetDtoOptions(AuthorizationContext, request);
 
-            if (request.UserId.HasValue)
+            User user = null;
+            BaseItem parentItem;
+
+            if (!string.IsNullOrWhiteSpace(request.UserId))
             {
-                user = UserManager.GetUserById(request.UserId.Value);
-                item = string.IsNullOrEmpty(request.ParentId) ? user.RootFolder : DtoBuilder.GetItemByClientId(request.ParentId, UserManager, LibraryManager, user.Id);
+                user = UserManager.GetUserById(request.UserId);
+                parentItem = string.IsNullOrEmpty(request.ParentId) ? user.RootFolder : LibraryManager.GetItemById(request.ParentId);
             }
             else
             {
-                item = string.IsNullOrEmpty(request.ParentId) ? LibraryManager.RootFolder : DtoBuilder.GetItemByClientId(request.ParentId, UserManager, LibraryManager);
+                parentItem = string.IsNullOrEmpty(request.ParentId) ? LibraryManager.RootFolder : LibraryManager.GetItemById(request.ParentId);
             }
 
             IEnumerable<BaseItem> items;
 
-            if (item.IsFolder)
-            {
-                var folder = (Folder)item;
+            var excludeItemTypes = request.GetExcludeItemTypes();
+            var includeItemTypes = request.GetIncludeItemTypes();
+            var mediaTypes = request.GetMediaTypes();
 
-                if (request.UserId.HasValue)
+            var query = new InternalItemsQuery(user)
+            {
+                ExcludeItemTypes = excludeItemTypes,
+                IncludeItemTypes = includeItemTypes,
+                MediaTypes = mediaTypes
+            };
+
+            Func<BaseItem, bool> filter = i => FilterItem(request, i, excludeItemTypes, includeItemTypes, mediaTypes);
+
+            if (parentItem.IsFolder)
+            {
+                var folder = (Folder)parentItem;
+
+                if (!string.IsNullOrWhiteSpace(request.UserId))
                 {
-                    items = request.Recursive ? folder.GetRecursiveChildren(user) : folder.GetChildren(user);
+                    items = request.Recursive ?
+                        folder.GetRecursiveChildren(user, query) :
+                        folder.GetChildren(user, true).Where(filter);
                 }
                 else
                 {
-                    items = request.Recursive ? folder.RecursiveChildren: folder.Children;
+                    items = request.Recursive ?
+                        folder.GetRecursiveChildren(filter) :
+                        folder.Children.Where(filter);
                 }
             }
             else
             {
-                items = new[] { item };
+                items = new[] { parentItem }.Where(filter);
             }
-
-            items = FilterItems(request, items);
 
             var extractedItems = GetAllItems(request, items);
 
-            extractedItems = FilterItems(request, extractedItems, user);
-            extractedItems = SortItems(request, extractedItems);
+            var filteredItems = FilterItems(request, extractedItems, user);
 
-            var ibnItemsArray = extractedItems.ToArray();
+            filteredItems = LibraryManager.Sort(filteredItems, user, request.GetOrderBy(), request.SortOrder ?? SortOrder.Ascending);
 
-            IEnumerable<IbnStub<TItemType>> ibnItems = ibnItemsArray;
+            var ibnItemsArray = filteredItems.ToList();
+
+            IEnumerable<BaseItem> ibnItems = ibnItemsArray;
 
             var result = new ItemsResult
             {
-                TotalRecordCount = ibnItemsArray.Length
+                TotalRecordCount = ibnItemsArray.Count
             };
 
             if (request.StartIndex.HasValue || request.Limit.HasValue)
@@ -113,13 +322,12 @@ namespace MediaBrowser.Api.UserLibrary
 
             }
 
-            var fields = request.GetItemFields().ToList();
+            var tuples = ibnItems.Select(i => new Tuple<BaseItem, List<BaseItem>>(i, new List<BaseItem>()));
 
-            var tasks = ibnItems.Select(i => GetDto(i, user, fields));
+            var syncProgess = DtoService.GetSyncedItemProgress(dtoOptions);
+            var dtos = tuples.Select(i => DtoService.GetItemByNameDto(i.Item1, dtoOptions, i.Item2, syncProgess, user));
 
-            var resultItems = await Task.WhenAll(tasks).ConfigureAwait(false);
-
-            result.Items = resultItems.Where(i => i != null).ToArray();
+            result.Items = dtos.Where(i => i != null).ToArray();
 
             return result;
         }
@@ -130,40 +338,61 @@ namespace MediaBrowser.Api.UserLibrary
         /// <param name="request">The request.</param>
         /// <param name="items">The items.</param>
         /// <param name="user">The user.</param>
-        /// <returns>IEnumerable{IbnStub}.</returns>
-        private IEnumerable<IbnStub<TItemType>> FilterItems(GetItemsByName request, IEnumerable<IbnStub<TItemType>> items, User user)
+        /// <returns>IEnumerable{`0}.</returns>
+        private IEnumerable<BaseItem> FilterItems(GetItemsByName request, IEnumerable<BaseItem> items, User user)
         {
             if (!string.IsNullOrEmpty(request.NameStartsWithOrGreater))
             {
-                items = items.Where(i => string.Compare(request.NameStartsWithOrGreater, i.Name, StringComparison.CurrentCultureIgnoreCase) < 1);
+                items = items.Where(i => string.Compare(request.NameStartsWithOrGreater, i.SortName, StringComparison.CurrentCultureIgnoreCase) < 1);
+            }
+            if (!string.IsNullOrEmpty(request.NameStartsWith))
+            {
+                items = items.Where(i => string.Compare(request.NameStartsWith, i.SortName.Substring(0, 1), StringComparison.CurrentCultureIgnoreCase) == 0);
+            }
+
+            if (!string.IsNullOrEmpty(request.NameLessThan))
+            {
+                items = items.Where(i => string.Compare(request.NameLessThan, i.SortName, StringComparison.CurrentCultureIgnoreCase) == 1);
+            }
+
+            var imageTypes = request.GetImageTypes().ToList();
+            if (imageTypes.Count > 0)
+            {
+                items = items.Where(item => imageTypes.Any(item.HasImage));
             }
 
             var filters = request.GetFilters().ToList();
 
-            if (filters.Count == 0)
-            {
-                return items;
-            }
-
-            items = items.AsParallel();
-
             if (filters.Contains(ItemFilter.Dislikes))
             {
                 items = items.Where(i =>
-                {
-                    var userdata = i.GetUserItemData(UserDataRepository, user.Id).Result;
+                    {
+                        var userdata = UserDataRepository.GetUserData(user, i);
 
-                    return userdata != null && userdata.Likes.HasValue && !userdata.Likes.Value;
-                });
+                        return userdata != null && userdata.Likes.HasValue && !userdata.Likes.Value;
+                    });
             }
 
             if (filters.Contains(ItemFilter.Likes))
             {
                 items = items.Where(i =>
                 {
-                    var userdata = i.GetUserItemData(UserDataRepository, user.Id).Result;
+                    var userdata = UserDataRepository.GetUserData(user, i);
 
                     return userdata != null && userdata.Likes.HasValue && userdata.Likes.Value;
+                });
+            }
+
+            if (filters.Contains(ItemFilter.IsFavoriteOrLikes))
+            {
+                items = items.Where(i =>
+                {
+                    var userdata = UserDataRepository.GetUserData(user, i);
+
+                    var likes = userdata.Likes ?? false;
+                    var favorite = userdata.IsFavorite;
+
+                    return likes || favorite;
                 });
             }
 
@@ -171,69 +400,96 @@ namespace MediaBrowser.Api.UserLibrary
             {
                 items = items.Where(i =>
                 {
-                    var userdata = i.GetUserItemData(UserDataRepository, user.Id).Result;
+                    var userdata = UserDataRepository.GetUserData(user, i);
 
-                    return userdata != null && userdata.Likes.HasValue && userdata.IsFavorite;
+                    return userdata != null && userdata.IsFavorite;
                 });
             }
-            
-            return items.AsEnumerable();
+
+            // Avoid implicitly captured closure
+            var currentRequest = request;
+            return items.Where(i => ApplyAdditionalFilters(currentRequest, i, user, false));
         }
-        
-        /// <summary>
-        /// Sorts the items.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <param name="items">The items.</param>
-        /// <returns>IEnumerable{BaseItem}.</returns>
-        private IEnumerable<IbnStub<TItemType>> SortItems(GetItemsByName request, IEnumerable<IbnStub<TItemType>> items)
+
+        private bool ApplyAdditionalFilters(BaseItemsRequest request, BaseItem i, User user, bool isPreFiltered)
         {
-            if (string.Equals(request.SortBy, "SortName", StringComparison.OrdinalIgnoreCase))
+            if (!isPreFiltered)
             {
-                if (request.SortOrder.HasValue && request.SortOrder.Value == Model.Entities.SortOrder.Descending)
+                // Apply tag filter
+                var tags = request.GetTags();
+                if (tags.Length > 0)
                 {
-                    items = items.OrderByDescending(i => i.Name);
+                    if (!tags.Any(v => i.Tags.Contains(v, StringComparer.OrdinalIgnoreCase)))
+                    {
+                        return false;
+                    }
                 }
-                else
+
+                // Apply official rating filter
+                var officialRatings = request.GetOfficialRatings();
+                if (officialRatings.Length > 0 && !officialRatings.Contains(i.OfficialRating ?? string.Empty))
                 {
-                    items = items.OrderBy(i => i.Name);
+                    return false;
+                }
+
+                // Apply genre filter
+                var genres = request.GetGenres();
+                if (genres.Length > 0 && !genres.Any(v => i.Genres.Contains(v, StringComparer.OrdinalIgnoreCase)))
+                {
+                    return false;
+                }
+
+                // Apply year filter
+                var years = request.GetYears();
+                if (years.Length > 0 && !(i.ProductionYear.HasValue && years.Contains(i.ProductionYear.Value)))
+                {
+                    return false;
                 }
             }
 
-            return items;
+            return true;
         }
+
 
         /// <summary>
         /// Filters the items.
         /// </summary>
         /// <param name="request">The request.</param>
-        /// <param name="items">The items.</param>
+        /// <param name="f">The f.</param>
+        /// <param name="excludeItemTypes">The exclude item types.</param>
+        /// <param name="includeItemTypes">The include item types.</param>
+        /// <param name="mediaTypes">The media types.</param>
         /// <returns>IEnumerable{BaseItem}.</returns>
-        protected virtual IEnumerable<BaseItem> FilterItems(GetItemsByName request, IEnumerable<BaseItem> items)
+        private bool FilterItem(GetItemsByName request, BaseItem f, string[] excludeItemTypes, string[] includeItemTypes, string[] mediaTypes)
         {
             // Exclude item types
-            if (!string.IsNullOrEmpty(request.ExcludeItemTypes))
+            if (excludeItemTypes.Length > 0)
             {
-                var vals = request.ExcludeItemTypes.Split(',');
-                items = items.Where(f => !vals.Contains(f.GetType().Name, StringComparer.OrdinalIgnoreCase));
+                if (excludeItemTypes.Contains(f.GetType().Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
             }
 
             // Include item types
-            if (!string.IsNullOrEmpty(request.IncludeItemTypes))
+            if (includeItemTypes.Length > 0)
             {
-                var vals = request.IncludeItemTypes.Split(',');
-                items = items.Where(f => vals.Contains(f.GetType().Name, StringComparer.OrdinalIgnoreCase));
+                if (!includeItemTypes.Contains(f.GetType().Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
             }
 
             // Include MediaTypes
-            if (!string.IsNullOrEmpty(request.MediaTypes))
+            if (mediaTypes.Length > 0)
             {
-                var vals = request.MediaTypes.Split(',');
-
-                items = items.Where(f => vals.Contains(f.MediaType ?? string.Empty, StringComparer.OrdinalIgnoreCase));
+                if (!mediaTypes.Contains(f.MediaType ?? string.Empty, StringComparer.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
             }
-            
-            return items;
+
+            return true;
         }
 
         /// <summary>
@@ -241,60 +497,8 @@ namespace MediaBrowser.Api.UserLibrary
         /// </summary>
         /// <param name="request">The request.</param>
         /// <param name="items">The items.</param>
-        /// <returns>IEnumerable{Tuple{System.StringFunc{System.Int32}}}.</returns>
-        protected abstract IEnumerable<IbnStub<TItemType>> GetAllItems(GetItemsByName request, IEnumerable<BaseItem> items);
-
-        /// <summary>
-        /// Gets the dto.
-        /// </summary>
-        /// <param name="stub">The stub.</param>
-        /// <param name="user">The user.</param>
-        /// <param name="fields">The fields.</param>
-        /// <returns>Task{DtoBaseItem}.</returns>
-        private async Task<BaseItemDto> GetDto(IbnStub<TItemType> stub, User user, List<ItemFields> fields)
-        {
-            BaseItem item;
-
-            try
-            {
-                item = await stub.GetItem().ConfigureAwait(false);
-            }
-            catch (IOException ex)
-            {
-                Logger.ErrorException("Error getting IBN item {0}", ex, stub.Name);
-                return null;
-            }
-
-            var dto = user == null ? await new DtoBuilder(Logger, LibraryManager, UserDataRepository).GetBaseItemDto(item, fields).ConfigureAwait(false) :
-                await new DtoBuilder(Logger, LibraryManager, UserDataRepository).GetBaseItemDto(item, fields, user).ConfigureAwait(false);
-
-            if (fields.Contains(ItemFields.ItemCounts))
-            {
-                var items = stub.Items;
-
-                dto.ChildCount = items.Count;
-                dto.RecentlyAddedItemCount = items.Count(i => i.IsRecentlyAdded());
-            }
-
-            return dto;
-        }
-
-        /// <summary>
-        /// Gets the items.
-        /// </summary>
-        /// <param name="userId">The user id.</param>
-        /// <returns>IEnumerable{BaseItem}.</returns>
-        protected IEnumerable<BaseItem> GetItems(Guid? userId)
-        {
-            if (userId.HasValue)
-            {
-                var user = UserManager.GetUserById(userId.Value);
-
-                return UserManager.GetUserById(userId.Value).RootFolder.GetRecursiveChildren(user);
-            }
-
-            return LibraryManager.RootFolder.RecursiveChildren;
-        }
+        /// <returns>IEnumerable{Task{`0}}.</returns>
+        protected abstract IEnumerable<BaseItem> GetAllItems(GetItemsByName request, IEnumerable<BaseItem> items);
     }
 
     /// <summary>
@@ -302,70 +506,9 @@ namespace MediaBrowser.Api.UserLibrary
     /// </summary>
     public class GetItemsByName : BaseItemsRequest, IReturn<ItemsResult>
     {
-        /// <summary>
-        /// Gets or sets the user id.
-        /// </summary>
-        /// <value>The user id.</value>
-        [ApiMember(Name = "UserId", Description = "Optional. Filter by user id, and attach user data", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public Guid? UserId { get; set; }
-
-        [ApiMember(Name = "NameStartsWithOrGreater", Description = "Optional filter by items whose name is sorted equally or greater than a given input string.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public string NameStartsWithOrGreater { get; set; }
-        
-        /// <summary>
-        /// What to sort the results by
-        /// </summary>
-        /// <value>The sort by.</value>
-        [ApiMember(Name = "SortBy", Description = "Optional. Options: SortName", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
-        public string SortBy { get; set; }
-
         public GetItemsByName()
         {
             Recursive = true;
-        }
-    }
-
-    public class IbnStub<T>
-        where T : BaseItem
-    {
-        private readonly Func<IEnumerable<BaseItem>> _childItemsFunction;
-        private List<BaseItem> _childItems;
-
-        private readonly Func<string,Task<T>> _itemFunction;
-        private Task<T> _itemTask;
-        
-        public string Name;
-
-        public BaseItem Item;
-        private Task<UserItemData> _userData;
-
-        public List<BaseItem> Items
-        {
-            get { return _childItems ?? (_childItems = _childItemsFunction().ToList()); }
-        }
-
-        public Task<T> GetItem()
-        {
-            return _itemTask ?? (_itemTask = _itemFunction(Name));
-        }
-
-        public async Task<UserItemData> GetUserItemData(IUserDataRepository repo, Guid userId)
-        {
-            var item = await GetItem().ConfigureAwait(false);
-
-            if (_userData == null)
-            {
-                _userData = repo.GetUserData(userId, item.GetUserDataKey());
-            }
-
-            return await _userData.ConfigureAwait(false);
-        }
-
-        public IbnStub(string name, Func<IEnumerable<BaseItem>> childItems, Func<string,Task<T>> item)
-        {
-            Name = name;
-            _childItemsFunction = childItems;
-            _itemFunction = item;
         }
     }
 }

@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -9,10 +9,11 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>MediaBrowser.Server.Implementations</RootNamespace>
     <AssemblyName>MediaBrowser.Server.Implementations</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\</SolutionDir>
-    <RestorePackages>true</RestorePackages>
+    <ProjectTypeGuids>{786C830F-07A1-408B-BD7F-6EE04809D6DB};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <TargetFrameworkProfile>Profile7</TargetFrameworkProfile>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -24,251 +25,48 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
+    <DebugType>none</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-  <ItemGroup>
-    <Reference Include="Alchemy">
-      <HintPath>..\packages\Alchemy.2.2.1\lib\net40\Alchemy.dll</HintPath>
-    </Reference>
-    <Reference Include="BdInfo, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\MediaBrowser.BdInfo.1.0.0.2\lib\net45\BdInfo.dll</HintPath>
-    </Reference>
-    <Reference Include="ICSharpCode.SharpZipLib">
-      <HintPath>..\packages\SharpZipLib.0.86.0\lib\20\ICSharpCode.SharpZipLib.dll</HintPath>
-    </Reference>
-    <Reference Include="Lucene.Net">
-      <HintPath>..\packages\Lucene.Net.3.0.3\lib\NET40\Lucene.Net.dll</HintPath>
-    </Reference>
-    <Reference Include="MoreLinq">
-      <HintPath>..\packages\morelinq.1.0.15631-beta\lib\net35\MoreLinq.dll</HintPath>
-    </Reference>
-    <Reference Include="ServiceStack, Version=3.9.46.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\ServiceStack.3.9.46\lib\net35\ServiceStack.dll</HintPath>
-    </Reference>
-    <Reference Include="ServiceStack.Api.Swagger, Version=3.9.45.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\ServiceStack.Api.Swagger.3.9.46\lib\net35\ServiceStack.Api.Swagger.dll</HintPath>
-    </Reference>
-    <Reference Include="ServiceStack.Common, Version=3.9.46.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\ServiceStack.Common.3.9.46\lib\net35\ServiceStack.Common.dll</HintPath>
-    </Reference>
-    <Reference Include="ServiceStack.Interfaces, Version=3.9.46.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\ServiceStack.Common.3.9.46\lib\net35\ServiceStack.Interfaces.dll</HintPath>
-    </Reference>
-    <Reference Include="ServiceStack.OrmLite.SqlServer, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\ServiceStack.OrmLite.SqlServer.3.9.43\lib\ServiceStack.OrmLite.SqlServer.dll</HintPath>
-    </Reference>
-    <Reference Include="ServiceStack.Redis, Version=3.9.43.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\ServiceStack.Redis.3.9.43\lib\net35\ServiceStack.Redis.dll</HintPath>
-    </Reference>
-    <Reference Include="ServiceStack.ServiceInterface, Version=3.9.46.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\ServiceStack.3.9.46\lib\net35\ServiceStack.ServiceInterface.dll</HintPath>
-    </Reference>
-    <Reference Include="ServiceStack.Text, Version=3.9.45.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\ServiceStack.Text.3.9.45\lib\net35\ServiceStack.Text.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Data.SQLite, Version=1.0.86.0, Culture=neutral, PublicKeyToken=db937bc2d44ff139, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\System.Data.SQLite.x86.1.0.86.0\lib\net45\System.Data.SQLite.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Data.SQLite.Linq, Version=1.0.86.0, Culture=neutral, PublicKeyToken=db937bc2d44ff139, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\System.Data.SQLite.x86.1.0.86.0\lib\net45\System.Data.SQLite.Linq.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Reactive.Core">
-      <HintPath>..\packages\Rx-Core.2.1.30214.0\lib\Net45\System.Reactive.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Reactive.Interfaces">
-      <HintPath>..\packages\Rx-Interfaces.2.1.30214.0\lib\Net45\System.Reactive.Interfaces.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Reactive.Linq">
-      <HintPath>..\packages\Rx-Linq.2.1.30214.0\lib\Net45\System.Reactive.Linq.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Web" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
-  </ItemGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release Mono|AnyCPU' ">
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release Mono\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\SharedVersion.cs">
       <Link>Properties\SharedVersion.cs</Link>
     </Compile>
-    <Compile Include="BdInfo\BdInfoExaminer.cs" />
-    <Compile Include="Configuration\ServerConfigurationManager.cs" />
-    <Compile Include="HttpServer\HttpResultFactory.cs" />
-    <Compile Include="HttpServer\HttpServer.cs" />
-    <Compile Include="HttpServer\NativeWebSocket.cs" />
-    <Compile Include="HttpServer\RangeRequestWriter.cs" />
-    <Compile Include="HttpServer\ServerFactory.cs" />
-    <Compile Include="HttpServer\ServerLogger.cs" />
-    <Compile Include="HttpServer\StreamWriter.cs" />
-    <Compile Include="HttpServer\SwaggerService.cs" />
-    <Compile Include="IO\DirectoryWatchers.cs" />
-    <Compile Include="Library\CoreResolutionIgnoreRule.cs" />
-    <Compile Include="Library\DisplayPreferencesManager.cs" />
-    <Compile Include="Library\LibraryManager.cs" />
-    <Compile Include="Library\LuceneSearchEngine.cs" />
-    <Compile Include="Library\ResolverHelper.cs" />
-    <Compile Include="Library\Resolvers\Audio\AudioResolver.cs" />
-    <Compile Include="Library\Resolvers\Audio\MusicAlbumDiscResolver.cs" />
-    <Compile Include="Library\Resolvers\Audio\MusicAlbumResolver.cs" />
-    <Compile Include="Library\Resolvers\Audio\MusicArtistResolver.cs" />
-    <Compile Include="Library\Resolvers\BaseItemResolver.cs" />
-    <Compile Include="Library\Resolvers\FolderResolver.cs" />
-    <Compile Include="Library\Resolvers\LocalTrailerResolver.cs" />
-    <Compile Include="Library\Resolvers\Movies\BoxSetResolver.cs" />
-    <Compile Include="Library\Resolvers\Movies\MovieResolver.cs" />
-    <Compile Include="Library\Resolvers\TV\EpisodeResolver.cs" />
-    <Compile Include="Library\Resolvers\TV\SeasonResolver.cs" />
-    <Compile Include="Library\Resolvers\TV\SeriesResolver.cs" />
-    <Compile Include="Library\Resolvers\VideoResolver.cs" />
-    <Compile Include="Library\UserManager.cs" />
-    <Compile Include="Localization\LocalizationManager.cs" />
-    <Compile Include="MediaEncoder\MediaEncoder.cs" />
+    <Compile Include="Devices\CameraUploadsFolder.cs" />
+    <Compile Include="Playlists\ManualPlaylistsFolder.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Providers\ProviderManager.cs" />
-    <Compile Include="Reflection\TypeMapper.cs" />
-    <Compile Include="ScheduledTasks\ArtistValidationTask.cs" />
-    <Compile Include="ScheduledTasks\PeopleValidationTask.cs" />
-    <Compile Include="ScheduledTasks\ChapterImagesTask.cs" />
-    <Compile Include="ScheduledTasks\ImageCleanupTask.cs" />
-    <Compile Include="ScheduledTasks\PluginUpdateTask.cs" />
-    <Compile Include="ScheduledTasks\RefreshMediaLibraryTask.cs" />
-    <Compile Include="ScheduledTasks\VideoImagesTask.cs" />
-    <Compile Include="ServerApplicationPaths.cs" />
-    <Compile Include="ServerManager\ServerManager.cs" />
-    <Compile Include="ServerManager\WebSocketConnection.cs" />
-    <Compile Include="Session\SessionManager.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Session\SessionWebSocketListener.cs" />
-    <Compile Include="Sorting\AlbumArtistComparer.cs" />
-    <Compile Include="Sorting\AlbumComparer.cs" />
-    <Compile Include="Sorting\ArtistComparer.cs" />
-    <Compile Include="Sorting\BudgetComparer.cs" />
-    <Compile Include="Sorting\CommunityRatingComparer.cs" />
-    <Compile Include="Sorting\CriticRatingComparer.cs" />
-    <Compile Include="Sorting\DateCreatedComparer.cs" />
-    <Compile Include="Sorting\DatePlayedComparer.cs" />
-    <Compile Include="Sorting\PlayCountComparer.cs" />
-    <Compile Include="Sorting\PremiereDateComparer.cs" />
-    <Compile Include="Sorting\ProductionYearComparer.cs" />
-    <Compile Include="Sorting\RandomComparer.cs" />
-    <Compile Include="Sorting\RevenueComparer.cs" />
-    <Compile Include="Sorting\RuntimeComparer.cs" />
-    <Compile Include="Sorting\SortNameComparer.cs" />
-    <Compile Include="Sqlite\SQLiteDisplayPreferencesRepository.cs" />
-    <Compile Include="Sqlite\SQLiteExtensions.cs" />
-    <Compile Include="Sqlite\SQLiteItemRepository.cs" />
-    <Compile Include="Sqlite\SQLiteRepository.cs" />
-    <Compile Include="Sqlite\SQLiteUserDataRepository.cs" />
-    <Compile Include="Sqlite\SQLiteUserRepository.cs" />
-    <Compile Include="Udp\UdpMessageReceivedEventArgs.cs" />
-    <Compile Include="Udp\UdpServer.cs" />
-    <Compile Include="Updates\InstallationManager.cs" />
-    <Compile Include="WebSocket\AlchemyServer.cs" />
-    <Compile Include="WebSocket\AlchemyWebSocket.cs" />
-    <Compile Include="WorldWeatherOnline\WeatherProvider.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\MediaBrowser.Common.Implementations\MediaBrowser.Common.Implementations.csproj">
-      <Project>{c4d2573a-3fd3-441f-81af-174ac4cd4e1d}</Project>
-      <Name>MediaBrowser.Common.Implementations</Name>
-    </ProjectReference>
     <ProjectReference Include="..\MediaBrowser.Common\MediaBrowser.Common.csproj">
-      <Project>{9142eefa-7570-41e1-bfcc-468bb571af2f}</Project>
+      <Project>{9142EEFA-7570-41E1-BFCC-468BB571AF2F}</Project>
       <Name>MediaBrowser.Common</Name>
     </ProjectReference>
     <ProjectReference Include="..\MediaBrowser.Controller\MediaBrowser.Controller.csproj">
-      <Project>{17e1f4e6-8abd-4fe5-9ecf-43d4b6087ba2}</Project>
+      <Project>{17E1F4E6-8ABD-4FE5-9ECF-43D4B6087BA2}</Project>
       <Name>MediaBrowser.Controller</Name>
     </ProjectReference>
     <ProjectReference Include="..\MediaBrowser.Model\MediaBrowser.Model.csproj">
-      <Project>{7eeeb4bb-f3e8-48fc-b4c5-70f0fff8329b}</Project>
+      <Project>{7EEEB4BB-F3E8-48FC-B4C5-70F0FFF8329B}</Project>
       <Name>MediaBrowser.Model</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="swagger-ui\css\hightlight.default.css">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\css\screen.css">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\images\logo_small.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\images\pet_store_api.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\images\throbber.gif">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\images\wordnik_api.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\index.html">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\lib\backbone-min.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\lib\handlebars-1.0.rc.1.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\lib\highlight.7.3.pack.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\lib\jquery-1.8.0.min.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\lib\jquery.ba-bbq.min.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\lib\jquery.slideto.min.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\lib\jquery.wiggle.min.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\lib\swagger.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\lib\underscore-min.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\swagger-ui.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="swagger-ui\swagger-ui.min.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <EmbeddedResource Include="MediaEncoder\readme.txt" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="MediaEncoder\fonts\ARIALUNI.TTF" />
-    <EmbeddedResource Include="MediaEncoder\fonts\fonts.conf" />
-    <EmbeddedResource Include="MediaEncoder\ffmpeg20130523.zip" />
-    <None Include="packages.config" />
+    <None Include="app.config" />
   </ItemGroup>
   <ItemGroup />
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <Import Project="$(SolutionDir)\.nuget\nuget.targets" />
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\Portable\$(TargetFrameworkVersion)\Microsoft.Portable.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">

@@ -1,150 +1,204 @@
-﻿using MediaBrowser.Model.Entities;
+﻿using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Configuration;
+using MediaBrowser.Model.Entities;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Common.IO;
+using MediaBrowser.Controller.IO;
+using MediaBrowser.Model.IO;
+using MediaBrowser.Model.Providers;
+using MediaBrowser.Model.Serialization;
 
 namespace MediaBrowser.Controller.Entities.Movies
 {
     /// <summary>
     /// Class Movie
     /// </summary>
-    public class Movie : Video
+    public class Movie : Video, IHasSpecialFeatures, IHasTrailers, IHasAwards, IHasMetascore, IHasLookupInfo<MovieInfo>, ISupportsBoxSetGrouping
     {
         public List<Guid> SpecialFeatureIds { get; set; }
 
         public Movie()
         {
             SpecialFeatureIds = new List<Guid>();
+            RemoteTrailers = new List<MediaUrl>();
+            LocalTrailerIds = new List<Guid>();
+            RemoteTrailerIds = new List<Guid>();
+            Taglines = new List<string>();
         }
-        
+
+        public string AwardSummary { get; set; }
+
+        public float? Metascore { get; set; }
+
+        public List<Guid> LocalTrailerIds { get; set; }
+        public List<Guid> RemoteTrailerIds { get; set; }
+
+        public List<MediaUrl> RemoteTrailers { get; set; }
+
         /// <summary>
-        /// Should be overridden to return the proper folder where metadata lives
+        /// Gets or sets the taglines.
         /// </summary>
-        /// <value>The meta location.</value>
+        /// <value>The taglines.</value>
+        public List<string> Taglines { get; set; }
+
+        /// <summary>
+        /// Gets or sets the name of the TMDB collection.
+        /// </summary>
+        /// <value>The name of the TMDB collection.</value>
+        public string TmdbCollectionName { get; set; }
+
         [IgnoreDataMember]
-        public override string MetaLocation
+        public string CollectionName
+        {
+            get { return TmdbCollectionName; }
+            set { TmdbCollectionName = value; }
+        }
+
+        public override double? GetDefaultPrimaryImageAspectRatio()
+        {
+            double value = 2;
+            value /= 3;
+
+            return value;
+        }
+
+        [IgnoreDataMember]
+        protected override bool SupportsIsInMixedFolderDetection
         {
             get
             {
-                return VideoType == VideoType.VideoFile || VideoType == VideoType.Iso ? System.IO.Path.GetDirectoryName(Path) : Path;
+                return false;
             }
         }
 
-        /// <summary>
-        /// Gets the user data key.
-        /// </summary>
-        /// <returns>System.String.</returns>
-        public override string GetUserDataKey()
+        protected override async Task<bool> RefreshedOwnedItems(MetadataRefreshOptions options, List<FileSystemMetadata> fileSystemChildren, CancellationToken cancellationToken)
         {
-            return this.GetProviderId(MetadataProviders.Tmdb) ?? this.GetProviderId(MetadataProviders.Imdb) ?? base.GetUserDataKey();
-        }
+            var hasChanges = await base.RefreshedOwnedItems(options, fileSystemChildren, cancellationToken).ConfigureAwait(false);
 
-        /// <summary>
-        /// Needed because the resolver stops at the movie folder and we find the video inside.
-        /// </summary>
-        /// <value><c>true</c> if [use parent path to create resolve args]; otherwise, <c>false</c>.</value>
-        protected override bool UseParentPathToCreateResolveArgs
-        {
-            get
+            // Must have a parent to have special features
+            // In other words, it must be part of the Parent/Child tree
+            if (LocationType == LocationType.FileSystem && GetParent() != null && !DetectIsInMixedFolder())
             {
-                return VideoType == VideoType.VideoFile || VideoType == VideoType.Iso;
+                var specialFeaturesChanged = await RefreshSpecialFeatures(options, fileSystemChildren, cancellationToken).ConfigureAwait(false);
+
+                if (specialFeaturesChanged)
+                {
+                    hasChanges = true;
+                }
             }
+
+            return hasChanges;
         }
 
-        /// <summary>
-        /// Overrides the base implementation to refresh metadata for special features
-        /// </summary>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <param name="forceSave">if set to <c>true</c> [is new item].</param>
-        /// <param name="forceRefresh">if set to <c>true</c> [force].</param>
-        /// <param name="allowSlowProviders">if set to <c>true</c> [allow slow providers].</param>
-        /// <param name="resetResolveArgs">if set to <c>true</c> [reset resolve args].</param>
-        /// <returns>Task{System.Boolean}.</returns>
-        public override async Task<bool> RefreshMetadata(CancellationToken cancellationToken, bool forceSave = false, bool forceRefresh = false, bool allowSlowProviders = true, bool resetResolveArgs = true)
+        private async Task<bool> RefreshSpecialFeatures(MetadataRefreshOptions options, List<FileSystemMetadata> fileSystemChildren, CancellationToken cancellationToken)
         {
-            // Kick off a task to refresh the main item
-            var result = await base.RefreshMetadata(cancellationToken, forceSave, forceRefresh, allowSlowProviders, resetResolveArgs).ConfigureAwait(false);
-
-            var specialFeaturesChanged = await RefreshSpecialFeatures(cancellationToken, forceSave, forceRefresh, allowSlowProviders).ConfigureAwait(false);
-
-            return specialFeaturesChanged || result;
-        }
-
-        private async Task<bool> RefreshSpecialFeatures(CancellationToken cancellationToken, bool forceSave = false, bool forceRefresh = false, bool allowSlowProviders = true)
-        {
-            var newItems = LoadSpecialFeatures().ToList();
+            var newItems = LibraryManager.FindExtras(this, fileSystemChildren, options.DirectoryService).ToList();
             var newItemIds = newItems.Select(i => i.Id).ToList();
 
             var itemsChanged = !SpecialFeatureIds.SequenceEqual(newItemIds);
 
-            var tasks = newItems.Select(i => i.RefreshMetadata(cancellationToken, forceSave, forceRefresh, allowSlowProviders));
+            var tasks = newItems.Select(i => RefreshMetadataForOwnedItem(i, false, options, cancellationToken));
 
-            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
 
             SpecialFeatureIds = newItemIds;
 
-            return itemsChanged || results.Contains(true);
+            return itemsChanged;
         }
-        
-        /// <summary>
-        /// Loads the special features.
-        /// </summary>
-        /// <returns>IEnumerable{Video}.</returns>
-        private IEnumerable<Video> LoadSpecialFeatures()
+
+        public override UnratedItem GetBlockUnratedType()
         {
-            if (LocationType != LocationType.FileSystem)
-            {
-                return new List<Video>();
-            }
+            return UnratedItem.Movie;
+        }
 
-            FileSystemInfo folder;
+        public MovieInfo GetLookupInfo()
+        {
+            var info = GetItemLookupInfo<MovieInfo>();
 
-            try
+            if (!DetectIsInMixedFolder())
             {
-                folder = ResolveArgs.GetFileSystemEntryByName("specials");
-            }
-            catch (IOException ex)
-            {
-                Logger.ErrorException("Error getting ResolveArgs for {0}", ex, Path);
-                return new List<Video>();
-            }
+                var name = System.IO.Path.GetFileName(ContainingFolderPath);
 
-            // Path doesn't exist. No biggie
-            if (folder == null)
-            {
-                return new List<Video>();
-            }
-
-            IEnumerable<FileSystemInfo> files;
-
-            try
-            {
-                files = new DirectoryInfo(folder.FullName).EnumerateFiles();
-            }
-            catch (IOException ex)
-            {
-                Logger.ErrorException("Error loading trailers for {0}", ex, Name);
-                return new List<Video>();
-            }
-
-            return LibraryManager.ResolvePaths<Video>(files, null).Select(video =>
-            {
-                // Try to retrieve it from the db. If we don't find it, use the resolved version
-                var dbItem = LibraryManager.RetrieveItem(video.Id) as Video;
-
-                if (dbItem != null)
+                if (VideoType == VideoType.VideoFile || VideoType == VideoType.Iso)
                 {
-                    dbItem.ResolveArgs = video.ResolveArgs;
-                    video = dbItem;
+                    if (string.Equals(name, System.IO.Path.GetFileName(Path), StringComparison.OrdinalIgnoreCase))
+                    {
+                        // if the folder has the file extension, strip it
+                        name = System.IO.Path.GetFileNameWithoutExtension(name);
+                    }
                 }
 
-                return video;
-            });
+                info.Name = name;
+            }
+
+            return info;
         }
 
+        public override bool BeforeMetadataRefresh()
+        {
+            var hasChanges = base.BeforeMetadataRefresh();
+
+            if (!ProductionYear.HasValue)
+            {
+                var info = LibraryManager.ParseName(Name);
+
+                var yearInName = info.Year;
+
+                if (yearInName.HasValue)
+                {
+                    ProductionYear = yearInName;
+                    hasChanges = true;
+                }
+                else
+                {
+                    // Try to get the year from the folder name
+                    if (!DetectIsInMixedFolder())
+                    {
+                        info = LibraryManager.ParseName(System.IO.Path.GetFileName(ContainingFolderPath));
+
+                        yearInName = info.Year;
+
+                        if (yearInName.HasValue)
+                        {
+                            ProductionYear = yearInName;
+                            hasChanges = true;
+                        }
+                    }
+                }
+            }
+
+            return hasChanges;
+        }
+
+        public override List<ExternalUrl> GetRelatedUrls()
+        {
+            var list = base.GetRelatedUrls();
+
+            var imdbId = this.GetProviderId(MetadataProviders.Imdb);
+            if (!string.IsNullOrWhiteSpace(imdbId))
+            {
+                list.Add(new ExternalUrl
+                {
+                    Name = "Trakt",
+                    Url = string.Format("https://trakt.tv/movies/{0}", imdbId)
+                });
+            }
+
+            return list;
+        }
+
+        [IgnoreDataMember]
+        public override bool StopRefreshIfLocalMetadataFound
+        {
+            get
+            {
+                // Need people id's from internet metadata
+                return false;
+            }
+        }
     }
 }

@@ -1,5 +1,5 @@
+using MediaBrowser.Model.Entities;
 using System.Threading.Tasks;
-using Mediabrowser.Model.Entities;
 
 namespace MediaBrowser.Common.Security
 {
@@ -18,13 +18,7 @@ namespace MediaBrowser.Common.Security
         string SupporterKey { get; set; }
 
         /// <summary>
-        /// Gets or sets the legacy key.
-        /// </summary>
-        /// <value>The legacy key.</value>
-        string LegacyKey { get; set; }
-
-        /// <summary>
-        /// Gets the registration status.
+        /// Gets the registration status. Overload to support existing plug-ins.
         /// </summary>
         /// <param name="feature">The feature.</param>
         /// <param name="mb2Equivalent">The MB2 equivalent.</param>
@@ -32,9 +26,24 @@ namespace MediaBrowser.Common.Security
         Task<MBRegistrationRecord> GetRegistrationStatus(string feature, string mb2Equivalent = null);
 
         /// <summary>
+        /// Gets the registration status.
+        /// </summary>
+        /// <param name="feature">The feature.</param>
+        /// <param name="mb2Equivalent">The MB2 equivalent.</param>
+        /// <param name="version">The version of the feature</param>
+        /// <returns>Task{MBRegistrationRecord}.</returns>
+        Task<MBRegistrationRecord> GetRegistrationStatus(string feature, string mb2Equivalent, string version);
+
+        /// <summary>
         /// Load all registration info for all entities that require registration
         /// </summary>
         /// <returns></returns>
         Task LoadAllRegistrationInfo();
+
+        /// <summary>
+        /// Register and app store sale with our back-end
+        /// </summary>
+        /// <param name="parameters">Json parameters to pass to admin server</param>
+        Task RegisterAppStoreSale(string parameters);
     }
 }

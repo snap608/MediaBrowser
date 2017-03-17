@@ -1,25 +1,22 @@
-﻿using MediaBrowser.Controller;
+﻿using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Search;
-using ServiceStack.ServiceHost;
-using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using MediaBrowser.Model.Services;
 
 namespace MediaBrowser.Api
 {
     /// <summary>
     /// Class GetSearchHints
     /// </summary>
-    [Route("/Search/Hints", "GET")]
-    [Api(Description = "Gets search hints based on a search term")]
+    [Route("/Search/Hints", "GET", Summary = "Gets search hints based on a search term")]
     public class GetSearchHints : IReturn<SearchHintResult>
     {
         /// <summary>
@@ -41,7 +38,7 @@ namespace MediaBrowser.Api
         /// </summary>
         /// <value>The user id.</value>
         [ApiMember(Name = "UserId", Description = "Optional. Supply a user id to search within a user's library or omit to search all.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET")]
-        public Guid? UserId { get; set; }
+        public string UserId { get; set; }
 
         /// <summary>
         /// Search characters used to find items
@@ -49,34 +46,63 @@ namespace MediaBrowser.Api
         /// <value>The index by.</value>
         [ApiMember(Name = "SearchTerm", Description = "The search term to filter on", IsRequired = true, DataType = "string", ParameterType = "query", Verb = "GET")]
         public string SearchTerm { get; set; }
+
+
+        [ApiMember(Name = "IncludePeople", IsRequired = false, DataType = "bool", ParameterType = "query", Verb = "GET")]
+        public bool IncludePeople { get; set; }
+
+        [ApiMember(Name = "IncludeMedia", IsRequired = false, DataType = "bool", ParameterType = "query", Verb = "GET")]
+        public bool IncludeMedia { get; set; }
+
+        [ApiMember(Name = "IncludeGenres", IsRequired = false, DataType = "bool", ParameterType = "query", Verb = "GET")]
+        public bool IncludeGenres { get; set; }
+
+        [ApiMember(Name = "IncludeStudios", IsRequired = false, DataType = "bool", ParameterType = "query", Verb = "GET")]
+        public bool IncludeStudios { get; set; }
+
+        [ApiMember(Name = "IncludeArtists", IsRequired = false, DataType = "bool", ParameterType = "query", Verb = "GET")]
+        public bool IncludeArtists { get; set; }
+
+        [ApiMember(Name = "IncludeItemTypes", Description = "Optional. If specified, results will be filtered based on item type. This allows multiple, comma delimeted.", IsRequired = false, DataType = "string", ParameterType = "query", Verb = "GET", AllowMultiple = true)]
+        public string IncludeItemTypes { get; set; }
+
+        public GetSearchHints()
+        {
+            IncludeArtists = true;
+            IncludeGenres = true;
+            IncludeMedia = true;
+            IncludePeople = true;
+            IncludeStudios = true;
+        }
     }
 
     /// <summary>
     /// Class SearchService
     /// </summary>
+    [Authenticated]
     public class SearchService : BaseApiService
     {
         /// <summary>
-        /// The _user manager
-        /// </summary>
-        private readonly IUserManager _userManager;
-        /// <summary>
         /// The _search engine
         /// </summary>
-        private readonly ILibrarySearchEngine _searchEngine;
+        private readonly ISearchEngine _searchEngine;
         private readonly ILibraryManager _libraryManager;
+        private readonly IDtoService _dtoService;
+        private readonly IImageProcessor _imageProcessor;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SearchService" /> class.
         /// </summary>
-        /// <param name="userManager">The user manager.</param>
         /// <param name="searchEngine">The search engine.</param>
         /// <param name="libraryManager">The library manager.</param>
-        public SearchService(IUserManager userManager, ILibrarySearchEngine searchEngine, ILibraryManager libraryManager)
+        /// <param name="dtoService">The dto service.</param>
+        /// <param name="imageProcessor">The image processor.</param>
+        public SearchService(ISearchEngine searchEngine, ILibraryManager libraryManager, IDtoService dtoService, IImageProcessor imageProcessor)
         {
-            _userManager = userManager;
             _searchEngine = searchEngine;
             _libraryManager = libraryManager;
+            _dtoService = dtoService;
+            _imageProcessor = imageProcessor;
         }
 
         /// <summary>
@@ -84,11 +110,11 @@ namespace MediaBrowser.Api
         /// </summary>
         /// <param name="request">The request.</param>
         /// <returns>System.Object.</returns>
-        public object Get(GetSearchHints request)
+        public async Task<object> Get(GetSearchHints request)
         {
-            var result = GetSearchHintsAsync(request).Result;
+            var result = await GetSearchHintsAsync(request).ConfigureAwait(false);
 
-            return ToOptimizedResult(result);
+            return ToOptimizedSerializedResultUsingCache(result);
         }
 
         /// <summary>
@@ -98,40 +124,26 @@ namespace MediaBrowser.Api
         /// <returns>Task{IEnumerable{SearchHintResult}}.</returns>
         private async Task<SearchHintResult> GetSearchHintsAsync(GetSearchHints request)
         {
-            IEnumerable<BaseItem> inputItems;
-
-            if (request.UserId.HasValue)
+            var result = await _searchEngine.GetSearchHints(new SearchQuery
             {
-                var user = _userManager.GetUserById(request.UserId.Value);
+                Limit = request.Limit,
+                SearchTerm = request.SearchTerm,
+                IncludeArtists = request.IncludeArtists,
+                IncludeGenres = request.IncludeGenres,
+                IncludeMedia = request.IncludeMedia,
+                IncludePeople = request.IncludePeople,
+                IncludeStudios = request.IncludeStudios,
+                StartIndex = request.StartIndex,
+                UserId = request.UserId,
+                IncludeItemTypes = (request.IncludeItemTypes ?? string.Empty).Split(',').Where(i => !string.IsNullOrWhiteSpace(i)).ToArray()
 
-                inputItems = user.RootFolder.GetRecursiveChildren(user);
-            }
-            else
-            {
-                inputItems = _libraryManager.RootFolder.RecursiveChildren;
-            }
-
-            var results = await _searchEngine.GetSearchHints(inputItems, request.SearchTerm).ConfigureAwait(false);
-
-            var searchResultArray = results.ToArray();
-
-            IEnumerable<SearchHintInfo> returnResults = searchResultArray;
-
-            if (request.StartIndex.HasValue)
-            {
-                returnResults = returnResults.Skip(request.StartIndex.Value);
-            }
-
-            if (request.Limit.HasValue)
-            {
-                returnResults = returnResults.Take(request.Limit.Value);
-            }
+            }).ConfigureAwait(false);
 
             return new SearchHintResult
             {
-                TotalRecordCount = searchResultArray.Length,
+                TotalRecordCount = result.TotalRecordCount,
 
-                SearchHints = returnResults.Select(GetSearchHintResult).ToArray()
+                SearchHints = result.Items.Select(GetSearchHintResult).ToArray()
             };
         }
 
@@ -149,57 +161,40 @@ namespace MediaBrowser.Api
                 Name = item.Name,
                 IndexNumber = item.IndexNumber,
                 ParentIndexNumber = item.ParentIndexNumber,
-                ItemId = DtoBuilder.GetClientItemId(item),
-                Type = item.GetType().Name,
+                ItemId = _dtoService.GetDtoId(item),
+                Type = item.GetClientTypeName(),
                 MediaType = item.MediaType,
                 MatchedTerm = hintInfo.MatchedTerm,
                 DisplayMediaType = item.DisplayMediaType,
-                RunTimeTicks = item.RunTimeTicks
+                RunTimeTicks = item.RunTimeTicks,
+                ProductionYear = item.ProductionYear
             };
 
-            if (item.HasImage(ImageType.Primary))
+            result.ChannelId = item.ChannelId;
+
+            var primaryImageTag = _imageProcessor.GetImageCacheTag(item, ImageType.Primary);
+
+            if (primaryImageTag != null)
             {
-                result.PrimaryImageTag = Kernel.Instance.ImageManager.GetImageCacheTag(item, ImageType.Primary, item.GetImage(ImageType.Primary));
+                result.PrimaryImageTag = primaryImageTag;
+                result.PrimaryImageAspectRatio = _dtoService.GetPrimaryImageAspectRatio(item);
             }
 
-            var episode = item as Episode;
+            SetThumbImageInfo(result, item);
+            SetBackdropImageInfo(result, item);
 
-            if (episode != null)
+            var hasSeries = item as IHasSeries;
+            if (hasSeries != null)
             {
-                result.Series = episode.Series.Name;
-            }
-
-            var season = item as Season;
-
-            if (season != null)
-            {
-                result.Series = season.Series.Name;
-
-                result.EpisodeCount = season.RecursiveChildren.OfType<Episode>().Count();
-            }
-
-            var series = item as Series;
-
-            if (series != null)
-            {
-                result.EpisodeCount = series.RecursiveChildren.OfType<Episode>().Count();
+                result.Series = hasSeries.SeriesName;
             }
 
             var album = item as MusicAlbum;
 
             if (album != null)
             {
-                var songs = album.RecursiveChildren.OfType<Audio>().ToList();
-
-                result.SongCount = songs.Count;
-                
-                result.Artists = songs
-                    .Select(i => i.Artist)
-                    .Where(i => !string.IsNullOrEmpty(i))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-
-                result.AlbumArtist = songs.Select(i => i.AlbumArtist).FirstOrDefault(i => !string.IsNullOrEmpty(i));
+                result.Artists = album.Artists.ToArray();
+                result.AlbumArtist = album.AlbumArtist;
             }
 
             var song = item as Audio;
@@ -207,11 +202,73 @@ namespace MediaBrowser.Api
             if (song != null)
             {
                 result.Album = song.Album;
-                result.AlbumArtist = song.AlbumArtist;
-                result.Artists = !string.IsNullOrEmpty(song.Artist) ? new[] { song.Artist } : new string[] { };
+                result.AlbumArtist = song.AlbumArtists.FirstOrDefault();
+                result.Artists = song.Artists.ToArray();
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.ChannelId))
+            {
+                var channel = _libraryManager.GetItemById(item.ChannelId);
+                result.ChannelName = channel == null ? null : channel.Name;
             }
 
             return result;
+        }
+
+        private void SetThumbImageInfo(SearchHint hint, BaseItem item)
+        {
+            var itemWithImage = item.HasImage(ImageType.Thumb) ? item : null;
+
+            if (itemWithImage == null)
+            {
+                if (item is Episode)
+                {
+                    itemWithImage = GetParentWithImage<Series>(item, ImageType.Thumb);
+                }
+            }
+
+            if (itemWithImage == null)
+            {
+                itemWithImage = GetParentWithImage<BaseItem>(item, ImageType.Thumb);
+            }
+
+            if (itemWithImage != null)
+            {
+                var tag = _imageProcessor.GetImageCacheTag(itemWithImage, ImageType.Thumb);
+
+                if (tag != null)
+                {
+                    hint.ThumbImageTag = tag;
+                    hint.ThumbImageItemId = itemWithImage.Id.ToString("N");
+                }
+            }
+        }
+
+        private void SetBackdropImageInfo(SearchHint hint, BaseItem item)
+        {
+            var itemWithImage = item.HasImage(ImageType.Backdrop) ? item : null;
+
+            if (itemWithImage == null)
+            {
+                itemWithImage = GetParentWithImage<BaseItem>(item, ImageType.Backdrop);
+            }
+
+            if (itemWithImage != null)
+            {
+                var tag = _imageProcessor.GetImageCacheTag(itemWithImage, ImageType.Backdrop);
+
+                if (tag != null)
+                {
+                    hint.BackdropImageTag = tag;
+                    hint.BackdropImageItemId = itemWithImage.Id.ToString("N");
+                }
+            }
+        }
+
+        private T GetParentWithImage<T>(BaseItem item, ImageType type)
+            where T : BaseItem
+        {
+            return item.GetParents().OfType<T>().FirstOrDefault(i => i.HasImage(type));
         }
     }
 }

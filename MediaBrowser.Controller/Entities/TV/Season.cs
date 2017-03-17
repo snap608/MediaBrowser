@@ -1,40 +1,28 @@
-﻿using System.Collections.Generic;
-using System.IO;
-using MediaBrowser.Common.Extensions;
-using MediaBrowser.Controller.IO;
-using MediaBrowser.Controller.Library;
-using MediaBrowser.Controller.Localization;
-using MediaBrowser.Model.Entities;
-using System;
-using System.Runtime.Serialization;
+﻿using System;
+using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Querying;
+using MediaBrowser.Model.Users;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using MediaBrowser.Model.Configuration;
+using MediaBrowser.Model.Serialization;
 
 namespace MediaBrowser.Controller.Entities.TV
 {
     /// <summary>
     /// Class Season
     /// </summary>
-    public class Season : Folder
+    public class Season : Folder, IHasSeries, IHasLookupInfo<SeasonInfo>
     {
-
-        /// <summary>
-        /// Seasons are just containers
-        /// </summary>
-        /// <value><c>true</c> if [include in index]; otherwise, <c>false</c>.</value>
         [IgnoreDataMember]
-        public override bool IncludeInIndex
+        public override bool SupportsAddingToPlaylist
         {
-            get
-            {
-                return false;
-            }
+            get { return true; }
         }
 
-        /// <summary>
-        /// We want to group into our Series
-        /// </summary>
-        /// <value><c>true</c> if [group in index]; otherwise, <c>false</c>.</value>
         [IgnoreDataMember]
-        public override bool GroupInIndex
+        public override bool IsPreSorted
         {
             get
             {
@@ -42,57 +30,75 @@ namespace MediaBrowser.Controller.Entities.TV
             }
         }
 
-        /// <summary>
-        /// Override this to return the folder that should be used to construct a container
-        /// for this item in an index.  GroupInIndex should be true as well.
-        /// </summary>
-        /// <value>The index container.</value>
         [IgnoreDataMember]
-        public override Folder IndexContainer
+        public override bool SupportsDateLastMediaAdded
         {
             get
             {
-                return Series;
+                return false;
             }
+        }
+
+        [IgnoreDataMember]
+        public override bool SupportsInheritedParentImages
+        {
+            get { return true; }
+        }
+
+        [IgnoreDataMember]
+        public override Guid? DisplayParentId
+        {
+            get { return SeriesId; }
+        }
+
+        [IgnoreDataMember]
+        public string SeriesSortName { get; set; }
+
+        public override double? GetDefaultPrimaryImageAspectRatio()
+        {
+            double value = 2;
+            value /= 3;
+
+            return value;
+        }
+
+        public string FindSeriesSortName()
+        {
+            var series = Series;
+            return series == null ? SeriesSortName : series.SortName;
         }
 
         // Genre, Rating and Stuido will all be the same
-        protected override Dictionary<string, Func<User, IEnumerable<BaseItem>>> GetIndexByOptions()
+        protected override IEnumerable<string> GetIndexByOptions()
         {
-            return new Dictionary<string, Func<User, IEnumerable<BaseItem>>> {            
-                {LocalizedStrings.Instance.GetString("NoneDispPref"), null}, 
-                {LocalizedStrings.Instance.GetString("PerformerDispPref"), GetIndexByPerformer},
-                {LocalizedStrings.Instance.GetString("DirectorDispPref"), GetIndexByDirector},
-                {LocalizedStrings.Instance.GetString("YearDispPref"), GetIndexByYear},
+            return new List<string> {
+                {"None"},
+                {"Performer"},
+                {"Director"},
+                {"Year"},
             };
         }
 
-        /// <summary>
-        /// Gets the user data key.
-        /// </summary>
-        /// <returns>System.String.</returns>
-        public override string GetUserDataKey()
+        public override List<string> GetUserDataKeys()
         {
-            if (Series != null)
+            var list = base.GetUserDataKeys();
+
+            var series = Series;
+            if (series != null)
             {
-                var seasonNo = IndexNumber ?? 0;
-                return Series.GetUserDataKey() + seasonNo.ToString("000");
+                list.InsertRange(0, series.GetUserDataKeys().Select(i => i + (IndexNumber ?? 0).ToString("000")));
             }
 
-            return base.GetUserDataKey();
+            return list;
         }
 
-        /// <summary>
-        /// We persist the MB Id of our series object so we can always find it no matter
-        /// what context we happen to be loaded from.
-        /// </summary>
-        /// <value>The series item id.</value>
-        public Guid SeriesItemId { get; set; }
+        public override int GetChildCount(User user)
+        {
+            var result = GetChildren(user, true).Count();
 
-        /// <summary>
-        /// The _series
-        /// </summary>
-        private Series _series;
+            return result;
+        }
+
         /// <summary>
         /// This Episode's Series Instance
         /// </summary>
@@ -100,59 +106,41 @@ namespace MediaBrowser.Controller.Entities.TV
         [IgnoreDataMember]
         public Series Series
         {
-            get { return _series ?? (_series = FindParent<Series>()); }
-        }
-
-        /// <summary>
-        /// Our rating comes from our series
-        /// </summary>
-        public override string OfficialRating
-        {
-            get { return Series != null ? Series.OfficialRating : base.OfficialRating; }
-            set
+            get
             {
-                base.OfficialRating = value;
+                var seriesId = SeriesId ?? FindSeriesId();
+                return seriesId.HasValue ? (LibraryManager.GetItemById(seriesId.Value) as Series) : null;
             }
         }
 
-        /// <summary>
-        /// Our rating comes from our series
-        /// </summary>
-        public override string CustomRating
+        [IgnoreDataMember]
+        public string SeriesPath
         {
-            get { return Series != null ? Series.CustomRating : base.CustomRating; }
-            set
+            get
             {
-                base.CustomRating = value;
+                var series = Series;
+
+                if (series != null)
+                {
+                    return series.Path;
+                }
+
+                return System.IO.Path.GetDirectoryName(Path);
             }
         }
 
-        /// <summary>
-        /// Add files from the metadata folder to ResolveArgs
-        /// </summary>
-        /// <param name="args">The args.</param>
-        public static void AddMetadataFiles(ItemResolveArgs args)
+        public override string CreatePresentationUniqueKey()
         {
-            var folder = args.GetFileSystemEntryByName("metadata");
-
-            if (folder != null)
+            if (IndexNumber.HasValue)
             {
-                args.AddMetadataFiles(new DirectoryInfo(folder.FullName).EnumerateFiles());
+                var series = Series;
+                if (series != null)
+                {
+                    return series.PresentationUniqueKey + "-" + (IndexNumber ?? 0).ToString("000");
+                }
             }
-        }
 
-        /// <summary>
-        /// Creates ResolveArgs on demand
-        /// </summary>
-        /// <param name="pathInfo">The path info.</param>
-        /// <returns>ItemResolveArgs.</returns>
-        protected internal override ItemResolveArgs CreateResolveArgs(FileSystemInfo pathInfo = null)
-        {
-            var args = base.CreateResolveArgs(pathInfo);
-
-            AddMetadataFiles(args);
-
-            return args;
+            return base.CreatePresentationUniqueKey();
         }
 
         /// <summary>
@@ -162,6 +150,132 @@ namespace MediaBrowser.Controller.Entities.TV
         protected override string CreateSortName()
         {
             return IndexNumber != null ? IndexNumber.Value.ToString("0000") : Name;
+        }
+
+        protected override Task<QueryResult<BaseItem>> GetItemsInternal(InternalItemsQuery query)
+        {
+            if (query.User == null)
+            {
+                return base.GetItemsInternal(query);
+            }
+
+            var user = query.User;
+
+            Func<BaseItem, bool> filter = i => UserViewBuilder.Filter(i, user, query, UserDataManager, LibraryManager);
+
+            var items = GetEpisodes(user).Where(filter);
+
+            var result = PostFilterAndSort(items, query, false, false);
+
+            return Task.FromResult(result);
+        }
+
+        /// <summary>
+        /// Gets the episodes.
+        /// </summary>
+        /// <param name="user">The user.</param>
+        /// <returns>IEnumerable{Episode}.</returns>
+        public IEnumerable<Episode> GetEpisodes(User user)
+        {
+            return GetEpisodes(Series, user);
+        }
+
+        public IEnumerable<Episode> GetEpisodes(Series series, User user)
+        {
+            return GetEpisodes(series, user, null);
+        }
+
+        public IEnumerable<Episode> GetEpisodes(Series series, User user, IEnumerable<Episode> allSeriesEpisodes)
+        {
+            return series.GetSeasonEpisodes(this, user, allSeriesEpisodes);
+        }
+
+        public IEnumerable<Episode> GetEpisodes()
+        {
+            return Series.GetSeasonEpisodes(this, null, null);
+        }
+
+        public override IEnumerable<BaseItem> GetChildren(User user, bool includeLinkedChildren)
+        {
+            return GetEpisodes(user);
+        }
+
+        protected override bool GetBlockUnratedValue(UserPolicy config)
+        {
+            // Don't block. Let either the entire series rating or episode rating determine it
+            return false;
+        }
+
+        public override UnratedItem GetBlockUnratedType()
+        {
+            return UnratedItem.Series;
+        }
+
+        [IgnoreDataMember]
+        public string SeriesPresentationUniqueKey { get; set; }
+
+        [IgnoreDataMember]
+        public string SeriesName { get; set; }
+
+        [IgnoreDataMember]
+        public Guid? SeriesId { get; set; }
+
+        public string FindSeriesPresentationUniqueKey()
+        {
+            var series = Series;
+            return series == null ? null : series.PresentationUniqueKey;
+        }
+
+        public string FindSeriesName()
+        {
+            var series = Series;
+            return series == null ? SeriesName : series.Name;
+        }
+
+        public Guid? FindSeriesId()
+        {
+            var series = FindParent<Series>();
+            return series == null ? (Guid?)null : series.Id;
+        }
+
+        /// <summary>
+        /// Gets the lookup information.
+        /// </summary>
+        /// <returns>SeasonInfo.</returns>
+        public SeasonInfo GetLookupInfo()
+        {
+            var id = GetItemLookupInfo<SeasonInfo>();
+
+            var series = Series;
+
+            if (series != null)
+            {
+                id.SeriesProviderIds = series.ProviderIds;
+            }
+
+            return id;
+        }
+
+        /// <summary>
+        /// This is called before any metadata refresh and returns true or false indicating if changes were made
+        /// </summary>
+        /// <returns><c>true</c> if XXXX, <c>false</c> otherwise.</returns>
+        public override bool BeforeMetadataRefresh()
+        {
+            var hasChanges = base.BeforeMetadataRefresh();
+
+            if (!IndexNumber.HasValue && !string.IsNullOrEmpty(Path))
+            {
+                IndexNumber = IndexNumber ?? LibraryManager.GetSeasonNumberFromPath(Path);
+
+                // If a change was made record it
+                if (IndexNumber.HasValue)
+                {
+                    hasChanges = true;
+                }
+            }
+
+            return hasChanges;
         }
     }
 }

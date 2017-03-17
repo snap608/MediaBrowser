@@ -1,33 +1,31 @@
-﻿using MediaBrowser.Common.Configuration;
-using MediaBrowser.Common.Extensions;
-using MediaBrowser.Common.IO;
-using MediaBrowser.Common.Net;
-using MediaBrowser.Controller;
-using MediaBrowser.Controller.Dto;
+﻿using MediaBrowser.Common.Extensions;
+using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Entities;
-using MediaBrowser.Controller.Entities.Audio;
-using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Net;
+using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Drawing;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
-using ServiceStack.ServiceHost;
-using ServiceStack.Text.Controller;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Common.IO;
+using MediaBrowser.Controller.IO;
+using MediaBrowser.Model.IO;
+using MediaBrowser.Model.Services;
 
 namespace MediaBrowser.Api.Images
 {
     /// <summary>
     /// Class GetItemImage
     /// </summary>
-    [Route("/Items/{Id}/Images", "GET")]
-    [Api(Description = "Gets information about an item's images")]
+    [Route("/Items/{Id}/Images", "GET", Summary = "Gets information about an item's images")]
+    [Authenticated]
     public class GetItemImageInfos : IReturn<List<ImageInfo>>
     {
         /// <summary>
@@ -40,7 +38,10 @@ namespace MediaBrowser.Api.Images
 
     [Route("/Items/{Id}/Images/{Type}", "GET")]
     [Route("/Items/{Id}/Images/{Type}/{Index}", "GET")]
-    [Api(Description = "Gets an item image")]
+    [Route("/Items/{Id}/Images/{Type}", "HEAD")]
+    [Route("/Items/{Id}/Images/{Type}/{Index}", "HEAD")]
+    [Route("/Items/{Id}/Images/{Type}/{Index}/{Tag}/{Format}/{MaxWidth}/{MaxHeight}/{PercentPlayed}/{UnplayedCount}", "GET")]
+    [Route("/Items/{Id}/Images/{Type}/{Index}/{Tag}/{Format}/{MaxWidth}/{MaxHeight}/{PercentPlayed}/{UnplayedCount}", "HEAD")]
     public class GetItemImage : ImageRequest
     {
         /// <summary>
@@ -54,8 +55,8 @@ namespace MediaBrowser.Api.Images
     /// <summary>
     /// Class UpdateItemImageIndex
     /// </summary>
-    [Route("/Items/{Id}/Images/{Type}/{Index}/Index", "POST")]
-    [Api(Description = "Updates the index for an item image")]
+    [Route("/Items/{Id}/Images/{Type}/{Index}/Index", "POST", Summary = "Updates the index for an item image")]
+    [Authenticated(Roles = "admin")]
     public class UpdateItemImageIndex : IReturnVoid
     {
         /// <summary>
@@ -63,7 +64,7 @@ namespace MediaBrowser.Api.Images
         /// </summary>
         /// <value>The id.</value>
         [ApiMember(Name = "Id", Description = "Item Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public Guid Id { get; set; }
+        public string Id { get; set; }
 
         /// <summary>
         /// Gets or sets the type of the image.
@@ -88,99 +89,44 @@ namespace MediaBrowser.Api.Images
     }
 
     /// <summary>
-    /// Class DeleteItemImage
-    /// </summary>
-    [Route("/Items/{Id}/Images/{Type}", "DELETE")]
-    [Route("/Items/{Id}/Images/{Type}/{Index}", "DELETE")]
-    [Api(Description = "Deletes an item image")]
-    public class DeleteItemImage : DeleteImageRequest, IReturnVoid
-    {
-        /// <summary>
-        /// Gets or sets the id.
-        /// </summary>
-        /// <value>The id.</value>
-        [ApiMember(Name = "Id", Description = "Item Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public Guid Id { get; set; }
-    }
-
-    /// <summary>
     /// Class GetPersonImage
-    /// </summary>
-    [Route("/Persons/{Name}/Images/{Type}", "GET")]
-    [Route("/Persons/{Name}/Images/{Type}/{Index}", "GET")]
-    [Api(Description = "Gets a person image")]
-    public class GetPersonImage : ImageRequest
-    {
-        /// <summary>
-        /// Gets or sets the name.
-        /// </summary>
-        /// <value>The name.</value>
-        [ApiMember(Name = "Name", Description = "Person name", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public string Name { get; set; }
-    }
-
-    /// <summary>
-    /// Class GetArtistImage
     /// </summary>
     [Route("/Artists/{Name}/Images/{Type}", "GET")]
     [Route("/Artists/{Name}/Images/{Type}/{Index}", "GET")]
-    [Api(Description = "Gets an artist image")]
-    public class GetArtistImage : ImageRequest
-    {
-        /// <summary>
-        /// Gets or sets the name.
-        /// </summary>
-        /// <value>The name.</value>
-        [ApiMember(Name = "Name", Description = "Artist name", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public string Name { get; set; }
-    }
-
-    /// <summary>
-    /// Class GetStudioImage
-    /// </summary>
-    [Route("/Studios/{Name}/Images/{Type}", "GET")]
-    [Route("/Studios/{Name}/Images/{Type}/{Index}", "GET")]
-    [Api(Description = "Gets a studio image")]
-    public class GetStudioImage : ImageRequest
-    {
-        /// <summary>
-        /// Gets or sets the name.
-        /// </summary>
-        /// <value>The name.</value>
-        [ApiMember(Name = "Name", Description = "Studio name", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public string Name { get; set; }
-    }
-
-    /// <summary>
-    /// Class GetGenreImage
-    /// </summary>
     [Route("/Genres/{Name}/Images/{Type}", "GET")]
     [Route("/Genres/{Name}/Images/{Type}/{Index}", "GET")]
-    [Api(Description = "Gets a genre image")]
-    public class GetGenreImage : ImageRequest
+    [Route("/GameGenres/{Name}/Images/{Type}", "GET")]
+    [Route("/GameGenres/{Name}/Images/{Type}/{Index}", "GET")]
+    [Route("/MusicGenres/{Name}/Images/{Type}", "GET")]
+    [Route("/MusicGenres/{Name}/Images/{Type}/{Index}", "GET")]
+    [Route("/Persons/{Name}/Images/{Type}", "GET")]
+    [Route("/Persons/{Name}/Images/{Type}/{Index}", "GET")]
+    [Route("/Studios/{Name}/Images/{Type}", "GET")]
+    [Route("/Studios/{Name}/Images/{Type}/{Index}", "GET")]
+    [Route("/Years/{Year}/Images/{Type}", "GET")]
+    [Route("/Years/{Year}/Images/{Type}/{Index}", "GET")]
+    [Route("/Artists/{Name}/Images/{Type}", "HEAD")]
+    [Route("/Artists/{Name}/Images/{Type}/{Index}", "HEAD")]
+    [Route("/Genres/{Name}/Images/{Type}", "HEAD")]
+    [Route("/Genres/{Name}/Images/{Type}/{Index}", "HEAD")]
+    [Route("/GameGenres/{Name}/Images/{Type}", "HEAD")]
+    [Route("/GameGenres/{Name}/Images/{Type}/{Index}", "HEAD")]
+    [Route("/MusicGenres/{Name}/Images/{Type}", "HEAD")]
+    [Route("/MusicGenres/{Name}/Images/{Type}/{Index}", "HEAD")]
+    [Route("/Persons/{Name}/Images/{Type}", "HEAD")]
+    [Route("/Persons/{Name}/Images/{Type}/{Index}", "HEAD")]
+    [Route("/Studios/{Name}/Images/{Type}", "HEAD")]
+    [Route("/Studios/{Name}/Images/{Type}/{Index}", "HEAD")]
+    [Route("/Years/{Year}/Images/{Type}", "HEAD")]
+    [Route("/Years/{Year}/Images/{Type}/{Index}", "HEAD")]
+    public class GetItemByNameImage : ImageRequest
     {
         /// <summary>
         /// Gets or sets the name.
         /// </summary>
         /// <value>The name.</value>
-        [ApiMember(Name = "Name", Description = "Genre name", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
+        [ApiMember(Name = "Name", Description = "Item name", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
         public string Name { get; set; }
-    }
-
-    /// <summary>
-    /// Class GetYearImage
-    /// </summary>
-    [Route("/Years/{Year}/Images/{Type}", "GET")]
-    [Route("/Years/{Year}/Images/{Type}/{Index}", "GET")]
-    [Api(Description = "Gets a year image")]
-    public class GetYearImage : ImageRequest
-    {
-        /// <summary>
-        /// Gets or sets the year.
-        /// </summary>
-        /// <value>The year.</value>
-        [ApiMember(Name = "Year", Description = "Year", IsRequired = true, DataType = "int", ParameterType = "path", Verb = "GET")]
-        public int Year { get; set; }
     }
 
     /// <summary>
@@ -188,7 +134,8 @@ namespace MediaBrowser.Api.Images
     /// </summary>
     [Route("/Users/{Id}/Images/{Type}", "GET")]
     [Route("/Users/{Id}/Images/{Type}/{Index}", "GET")]
-    [Api(Description = "Gets a user image")]
+    [Route("/Users/{Id}/Images/{Type}", "HEAD")]
+    [Route("/Users/{Id}/Images/{Type}/{Index}", "HEAD")]
     public class GetUserImage : ImageRequest
     {
         /// <summary>
@@ -196,7 +143,23 @@ namespace MediaBrowser.Api.Images
         /// </summary>
         /// <value>The id.</value>
         [ApiMember(Name = "Id", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
-        public Guid Id { get; set; }
+        public string Id { get; set; }
+    }
+
+    /// <summary>
+    /// Class DeleteItemImage
+    /// </summary>
+    [Route("/Items/{Id}/Images/{Type}", "DELETE")]
+    [Route("/Items/{Id}/Images/{Type}/{Index}", "DELETE")]
+    [Authenticated(Roles = "admin")]
+    public class DeleteItemImage : DeleteImageRequest, IReturnVoid
+    {
+        /// <summary>
+        /// Gets or sets the id.
+        /// </summary>
+        /// <value>The id.</value>
+        [ApiMember(Name = "Id", Description = "Item Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "DELETE")]
+        public string Id { get; set; }
     }
 
     /// <summary>
@@ -204,7 +167,7 @@ namespace MediaBrowser.Api.Images
     /// </summary>
     [Route("/Users/{Id}/Images/{Type}", "DELETE")]
     [Route("/Users/{Id}/Images/{Type}/{Index}", "DELETE")]
-    [Api(Description = "Deletes a user image")]
+    [Authenticated]
     public class DeleteUserImage : DeleteImageRequest, IReturnVoid
     {
         /// <summary>
@@ -212,7 +175,7 @@ namespace MediaBrowser.Api.Images
         /// </summary>
         /// <value>The id.</value>
         [ApiMember(Name = "Id", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "DELETE")]
-        public Guid Id { get; set; }
+        public string Id { get; set; }
     }
 
     /// <summary>
@@ -220,7 +183,7 @@ namespace MediaBrowser.Api.Images
     /// </summary>
     [Route("/Users/{Id}/Images/{Type}", "POST")]
     [Route("/Users/{Id}/Images/{Type}/{Index}", "POST")]
-    [Api(Description = "Posts a user image")]
+    [Authenticated]
     public class PostUserImage : DeleteImageRequest, IRequiresRequestStream, IReturnVoid
     {
         /// <summary>
@@ -228,7 +191,7 @@ namespace MediaBrowser.Api.Images
         /// </summary>
         /// <value>The id.</value>
         [ApiMember(Name = "Id", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "POST")]
-        public Guid Id { get; set; }
+        public string Id { get; set; }
 
         /// <summary>
         /// The raw Http Request Input Stream
@@ -242,7 +205,7 @@ namespace MediaBrowser.Api.Images
     /// </summary>
     [Route("/Items/{Id}/Images/{Type}", "POST")]
     [Route("/Items/{Id}/Images/{Type}/{Index}", "POST")]
-    [Api(Description = "Posts an item image")]
+    [Authenticated(Roles = "admin")]
     public class PostItemImage : DeleteImageRequest, IRequiresRequestStream, IReturnVoid
     {
         /// <summary>
@@ -264,33 +227,29 @@ namespace MediaBrowser.Api.Images
     /// </summary>
     public class ImageService : BaseApiService
     {
-        /// <summary>
-        /// The _user manager
-        /// </summary>
         private readonly IUserManager _userManager;
 
-        /// <summary>
-        /// The _library manager
-        /// </summary>
         private readonly ILibraryManager _libraryManager;
 
-        private readonly IApplicationPaths _appPaths;
-
         private readonly IProviderManager _providerManager;
+
+        private readonly IItemRepository _itemRepo;
+        private readonly IImageProcessor _imageProcessor;
+        private readonly IFileSystem _fileSystem;
+        private readonly IAuthorizationContext _authContext;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ImageService" /> class.
         /// </summary>
-        /// <param name="userManager">The user manager.</param>
-        /// <param name="libraryManager">The library manager.</param>
-        /// <param name="appPaths">The app paths.</param>
-        /// <param name="providerManager">The provider manager.</param>
-        public ImageService(IUserManager userManager, ILibraryManager libraryManager, IApplicationPaths appPaths, IProviderManager providerManager)
+        public ImageService(IUserManager userManager, ILibraryManager libraryManager, IProviderManager providerManager, IItemRepository itemRepo, IImageProcessor imageProcessor, IFileSystem fileSystem, IAuthorizationContext authContext)
         {
             _userManager = userManager;
             _libraryManager = libraryManager;
-            _appPaths = appPaths;
             _providerManager = providerManager;
+            _itemRepo = itemRepo;
+            _imageProcessor = imageProcessor;
+            _fileSystem = fileSystem;
+            _authContext = authContext;
         }
 
         /// <summary>
@@ -300,11 +259,11 @@ namespace MediaBrowser.Api.Images
         /// <returns>System.Object.</returns>
         public object Get(GetItemImageInfos request)
         {
-            var item = DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager);
+            var item = _libraryManager.GetItemById(request.Id);
 
-            var result = GetItemImageInfos(item).Result;
+            var result = GetItemImageInfos(item);
 
-            return ToOptimizedResult(result);
+            return ToOptimizedSerializedResultUsingCache(result);
         }
 
         /// <summary>
@@ -312,107 +271,36 @@ namespace MediaBrowser.Api.Images
         /// </summary>
         /// <param name="item">The item.</param>
         /// <returns>Task{List{ImageInfo}}.</returns>
-        public async Task<List<ImageInfo>> GetItemImageInfos(BaseItem item)
+        public List<ImageInfo> GetItemImageInfos(BaseItem item)
         {
             var list = new List<ImageInfo>();
 
-            foreach (var image in item.Images)
+            var itemImages = item.ImageInfos;
+
+            foreach (var image in itemImages.Where(i => !item.AllowsMultipleImages(i.Type)))
             {
-                var path = image.Value;
+                var info = GetImageInfo(item, image, null);
 
-                var fileInfo = new FileInfo(path);
-
-                var dateModified = Kernel.Instance.ImageManager.GetImageDateModified(item, path);
-
-                var size = await Kernel.Instance.ImageManager.GetImageSize(path, dateModified).ConfigureAwait(false);
-
-                list.Add(new ImageInfo
+                if (info != null)
                 {
-                    Path = path,
-                    ImageType = image.Key,
-                    ImageTag = Kernel.Instance.ImageManager.GetImageCacheTag(item, image.Key, path),
-                    Size = fileInfo.Length,
-                    Width = Convert.ToInt32(size.Width),
-                    Height = Convert.ToInt32(size.Height)
-                });
+                    list.Add(info);
+                }
             }
 
-            var index = 0;
-
-            foreach (var image in item.BackdropImagePaths)
+            foreach (var imageType in itemImages.Select(i => i.Type).Distinct().Where(item.AllowsMultipleImages))
             {
-                var fileInfo = new FileInfo(image);
+                var index = 0;
 
-                var dateModified = Kernel.Instance.ImageManager.GetImageDateModified(item, image);
+                // Prevent implicitly captured closure
+                var currentImageType = imageType;
 
-                var size = await Kernel.Instance.ImageManager.GetImageSize(image, dateModified).ConfigureAwait(false);
-
-                list.Add(new ImageInfo
+                foreach (var image in itemImages.Where(i => i.Type == currentImageType))
                 {
-                    Path = image,
-                    ImageIndex = index,
-                    ImageType = ImageType.Backdrop,
-                    ImageTag = Kernel.Instance.ImageManager.GetImageCacheTag(item, ImageType.Backdrop, image),
-                    Size = fileInfo.Length,
-                    Width = Convert.ToInt32(size.Width),
-                    Height = Convert.ToInt32(size.Height)
-                });
+                    var info = GetImageInfo(item, image, index);
 
-                index++;
-            }
-
-            index = 0;
-
-            foreach (var image in item.ScreenshotImagePaths)
-            {
-                var fileInfo = new FileInfo(image);
-
-                var dateModified = Kernel.Instance.ImageManager.GetImageDateModified(item, image);
-
-                var size = await Kernel.Instance.ImageManager.GetImageSize(image, dateModified).ConfigureAwait(false);
-
-                list.Add(new ImageInfo
-                {
-                    Path = image,
-                    ImageIndex = index,
-                    ImageType = ImageType.Screenshot,
-                    ImageTag = Kernel.Instance.ImageManager.GetImageCacheTag(item, ImageType.Screenshot, image),
-                    Size = fileInfo.Length,
-                    Width = Convert.ToInt32(size.Width),
-                    Height = Convert.ToInt32(size.Height)
-                });
-
-                index++;
-            }
-
-            var video = item as Video;
-
-            if (video != null)
-            {
-                index = 0;
-
-                foreach (var chapter in video.Chapters)
-                {
-                    if (!string.IsNullOrEmpty(chapter.ImagePath))
+                    if (info != null)
                     {
-                        var image = chapter.ImagePath;
-
-                        var fileInfo = new FileInfo(image);
-
-                        var dateModified = Kernel.Instance.ImageManager.GetImageDateModified(item, image);
-
-                        var size = await Kernel.Instance.ImageManager.GetImageSize(image, dateModified).ConfigureAwait(false);
-
-                        list.Add(new ImageInfo
-                        {
-                            Path = image,
-                            ImageIndex = index,
-                            ImageType = ImageType.Chapter,
-                            ImageTag = Kernel.Instance.ImageManager.GetImageCacheTag(item, ImageType.Chapter, image),
-                            Size = fileInfo.Length,
-                            Width = Convert.ToInt32(size.Width),
-                            Height = Convert.ToInt32(size.Height)
-                        });
+                        list.Add(info);
                     }
 
                     index++;
@@ -422,6 +310,51 @@ namespace MediaBrowser.Api.Images
             return list;
         }
 
+        private ImageInfo GetImageInfo(IHasImages item, ItemImageInfo info, int? imageIndex)
+        {
+            try
+            {
+                int? width = null;
+                int? height = null;
+                long length = 0;
+
+                try
+                {
+                    if (info.IsLocalFile)
+                    {
+                        var fileInfo = _fileSystem.GetFileInfo(info.Path);
+                        length = fileInfo.Length;
+
+                        var size = _imageProcessor.GetImageSize(info);
+
+                        width = Convert.ToInt32(size.Width);
+                        height = Convert.ToInt32(size.Height);
+
+                    }
+                }
+                catch
+                {
+
+                }
+                return new ImageInfo
+                {
+                    Path = info.Path,
+                    ImageIndex = imageIndex,
+                    ImageType = info.Type,
+                    ImageTag = _imageProcessor.GetImageCacheTag(item, info),
+                    Size = length,
+                    Width = width,
+                    Height = height
+                };
+            }
+            catch (Exception ex)
+            {
+                Logger.ErrorException("Error getting image information for {0}", ex, info.Path);
+
+                return null;
+            }
+        }
+
         /// <summary>
         /// Gets the specified request.
         /// </summary>
@@ -429,9 +362,25 @@ namespace MediaBrowser.Api.Images
         /// <returns>System.Object.</returns>
         public object Get(GetItemImage request)
         {
-            var item = string.IsNullOrEmpty(request.Id) ? _libraryManager.RootFolder : DtoBuilder.GetItemByClientId(request.Id, _userManager, _libraryManager);
+            var item = string.IsNullOrEmpty(request.Id) ?
+                _libraryManager.RootFolder :
+                _libraryManager.GetItemById(request.Id);
 
-            return GetImage(request, item);
+            return GetImage(request, item, false);
+        }
+
+        /// <summary>
+        /// Gets the specified request.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>System.Object.</returns>
+        public object Head(GetItemImage request)
+        {
+            var item = string.IsNullOrEmpty(request.Id) ?
+                _libraryManager.RootFolder :
+                _libraryManager.GetItemById(request.Id);
+
+            return GetImage(request, item, true);
         }
 
         /// <summary>
@@ -441,69 +390,34 @@ namespace MediaBrowser.Api.Images
         /// <returns>System.Object.</returns>
         public object Get(GetUserImage request)
         {
-            var item = _userManager.Users.First(i => i.Id == request.Id);
+            var item = _userManager.GetUserById(request.Id);
 
-            return GetImage(request, item);
+            return GetImage(request, item, false);
         }
 
-        /// <summary>
-        /// Gets the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>System.Object.</returns>
-        public object Get(GetYearImage request)
+        public object Head(GetUserImage request)
         {
-            var item = _libraryManager.GetYear(request.Year).Result;
+            var item = _userManager.GetUserById(request.Id);
 
-            return GetImage(request, item);
+            return GetImage(request, item, true);
         }
 
-        /// <summary>
-        /// Gets the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>System.Object.</returns>
-        public object Get(GetStudioImage request)
+        public object Get(GetItemByNameImage request)
         {
-            var item = GetStudio(request.Name, _libraryManager).Result;
+            var type = GetPathValue(0);
 
-            return GetImage(request, item);
+            var item = GetItemByName(request.Name, type, _libraryManager);
+
+            return GetImage(request, item, false);
         }
 
-        /// <summary>
-        /// Gets the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>System.Object.</returns>
-        public object Get(GetPersonImage request)
+        public object Head(GetItemByNameImage request)
         {
-            var item = GetPerson(request.Name, _libraryManager).Result;
+            var type = GetPathValue(0);
 
-            return GetImage(request, item);
-        }
+            var item = GetItemByName(request.Name, type, _libraryManager);
 
-        /// <summary>
-        /// Gets the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>System.Object.</returns>
-        public object Get(GetArtistImage request)
-        {
-            var item = GetArtist(request.Name, _libraryManager).Result;
-
-            return GetImage(request, item);
-        }
-
-        /// <summary>
-        /// Gets the specified request.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>System.Object.</returns>
-        public object Get(GetGenreImage request)
-        {
-            var item = GetGenre(request.Name, _libraryManager).Result;
-
-            return GetImage(request, item);
+            return GetImage(request, item, true);
         }
 
         /// <summary>
@@ -512,14 +426,14 @@ namespace MediaBrowser.Api.Images
         /// <param name="request">The request.</param>
         public void Post(PostUserImage request)
         {
-            var pathInfo = PathInfo.Parse(RequestContext.PathInfo);
-            var id = new Guid(pathInfo.GetArgumentValue<string>(1));
+            var userId = GetPathValue(1);
+            AssertCanUpdateUser(_authContext, _userManager, userId);
 
-            request.Type = (ImageType)Enum.Parse(typeof(ImageType), pathInfo.GetArgumentValue<string>(3), true);
+            request.Type = (ImageType)Enum.Parse(typeof(ImageType), GetPathValue(3), true);
 
-            var item = _userManager.Users.First(i => i.Id == id);
+            var item = _userManager.GetUserById(userId);
 
-            var task = PostImage(item, request.RequestStream, request.Type, RequestContext.ContentType);
+            var task = PostImage(item, request.RequestStream, request.Type, Request.ContentType);
 
             Task.WaitAll(task);
         }
@@ -530,14 +444,13 @@ namespace MediaBrowser.Api.Images
         /// <param name="request">The request.</param>
         public void Post(PostItemImage request)
         {
-            var pathInfo = PathInfo.Parse(RequestContext.PathInfo);
-            var id = new Guid(pathInfo.GetArgumentValue<string>(1));
+            var id = GetPathValue(1);
 
-            request.Type = (ImageType)Enum.Parse(typeof(ImageType), pathInfo.GetArgumentValue<string>(3), true);
+            request.Type = (ImageType)Enum.Parse(typeof(ImageType), GetPathValue(3), true);
 
             var item = _libraryManager.GetItemById(id);
 
-            var task = PostImage(item, request.RequestStream, request.Type, RequestContext.ContentType);
+            var task = PostImage(item, request.RequestStream, request.Type, Request.ContentType);
 
             Task.WaitAll(task);
         }
@@ -548,9 +461,12 @@ namespace MediaBrowser.Api.Images
         /// <param name="request">The request.</param>
         public void Delete(DeleteUserImage request)
         {
-            var item = _userManager.Users.First(i => i.Id == request.Id);
+            var userId = request.Id;
+            AssertCanUpdateUser(_authContext, _userManager, userId);
 
-            var task = item.DeleteImage(request.Type, request.Index);
+            var item = _userManager.GetUserById(userId);
+
+            var task = item.DeleteImage(request.Type, request.Index ?? 0);
 
             Task.WaitAll(task);
         }
@@ -563,7 +479,7 @@ namespace MediaBrowser.Api.Images
         {
             var item = _libraryManager.GetItemById(request.Id);
 
-            var task = item.DeleteImage(request.Type, request.Index);
+            var task = item.DeleteImage(request.Type, request.Index ?? 0);
 
             Task.WaitAll(task);
         }
@@ -589,48 +505,9 @@ namespace MediaBrowser.Api.Images
         /// <param name="currentIndex">Index of the current.</param>
         /// <param name="newIndex">The new index.</param>
         /// <returns>Task.</returns>
-        /// <exception cref="System.ArgumentException">The change index operation is only applicable to backdrops and screenshots</exception>
-        private Task UpdateItemIndex(BaseItem item, ImageType type, int currentIndex, int newIndex)
+        private Task UpdateItemIndex(IHasImages item, ImageType type, int currentIndex, int newIndex)
         {
-            string file1;
-            string file2;
-
-            if (type == ImageType.Screenshot)
-            {
-                file1 = item.ScreenshotImagePaths[currentIndex];
-                file2 = item.ScreenshotImagePaths[newIndex];
-            }
-            else if (type == ImageType.Backdrop)
-            {
-                file1 = item.BackdropImagePaths[currentIndex];
-                file2 = item.BackdropImagePaths[newIndex];
-            }
-            else
-            {
-                throw new ArgumentException("The change index operation is only applicable to backdrops and screenshots");
-            }
-
-            SwapFiles(file1, file2);
-
-            // Directory watchers should repeat this, but do a quick refresh first
-            return item.RefreshMetadata(CancellationToken.None, forceSave: true, allowSlowProviders: false);
-        }
-
-        /// <summary>
-        /// Swaps the files.
-        /// </summary>
-        /// <param name="file1">The file1.</param>
-        /// <param name="file2">The file2.</param>
-        private void SwapFiles(string file1, string file2)
-        {
-            var temp1 = Path.Combine(_appPaths.TempDirectory, Guid.NewGuid() + ".tmp");
-            var temp2 = Path.Combine(_appPaths.TempDirectory, Guid.NewGuid() + ".tmp");
-
-            File.Copy(file1, temp1);
-            File.Copy(file2, temp2);
-
-            File.Copy(temp1, file2, true);
-            File.Copy(temp2, file1, true);
+            return item.SwapImages(type, currentIndex, newIndex);
         }
 
         /// <summary>
@@ -638,26 +515,43 @@ namespace MediaBrowser.Api.Images
         /// </summary>
         /// <param name="request">The request.</param>
         /// <param name="item">The item.</param>
+        /// <param name="isHeadRequest">if set to <c>true</c> [is head request].</param>
         /// <returns>System.Object.</returns>
-        /// <exception cref="ResourceNotFoundException">
-        /// </exception>
-        private object GetImage(ImageRequest request, BaseItem item)
+        /// <exception cref="ResourceNotFoundException"></exception>
+        public Task<object> GetImage(ImageRequest request, IHasImages item, bool isHeadRequest)
         {
-            var kernel = Kernel.Instance;
+            if (request.PercentPlayed.HasValue)
+            {
+                if (request.PercentPlayed.Value <= 0)
+                {
+                    request.PercentPlayed = null;
+                }
+                else if (request.PercentPlayed.Value >= 100)
+                {
+                    request.PercentPlayed = null;
+                    request.AddPlayedIndicator = true;
+                }
+            }
+            if (request.PercentPlayed.HasValue)
+            {
+                request.UnplayedCount = null;
+            }
+            if (request.UnplayedCount.HasValue)
+            {
+                if (request.UnplayedCount.Value <= 0)
+                {
+                    request.UnplayedCount = null;
+                }
+            }
 
-            var index = request.Index ?? 0;
+            var imageInfo = GetImageInfo(request, item);
 
-            var imagePath = GetImagePath(kernel, request, item);
-
-            if (string.IsNullOrEmpty(imagePath))
+            if (imageInfo == null)
             {
                 throw new ResourceNotFoundException(string.Format("{0} does not have an image of type {1}", item.Name, request.Type));
             }
 
-            // See if we can avoid a file system lookup by looking for the file in ResolveArgs
-            var originalFileImageDateModified = kernel.ImageManager.GetImageDateModified(item, request.Type, index);
-
-            var supportedImageEnhancers = request.EnableImageEnhancers ? kernel.ImageManager.ImageEnhancers.Where(i =>
+            var supportedImageEnhancers = request.EnableImageEnhancers ? _imageProcessor.ImageEnhancers.Where(i =>
             {
                 try
                 {
@@ -672,50 +566,188 @@ namespace MediaBrowser.Api.Images
 
             }).ToList() : new List<IImageEnhancer>();
 
-            // If the file does not exist GetLastWriteTimeUtc will return jan 1, 1601 as opposed to throwing an exception
-            // http://msdn.microsoft.com/en-us/library/system.io.file.getlastwritetimeutc.aspx
-            if (originalFileImageDateModified.Year == 1601 && !File.Exists(imagePath))
+            var cropwhitespace = request.Type == ImageType.Logo || request.Type == ImageType.Art;
+
+            if (request.CropWhitespace.HasValue)
             {
-                throw new ResourceNotFoundException(string.Format("File not found: {0}", imagePath));
+                cropwhitespace = request.CropWhitespace.Value;
             }
 
-            var contentType = MimeTypes.GetMimeType(imagePath);
-
-            var cacheGuid = kernel.ImageManager.GetImageCacheTag(imagePath, originalFileImageDateModified, supportedImageEnhancers, item, request.Type);
+            var outputFormats = GetOutputFormats(request, imageInfo, cropwhitespace, supportedImageEnhancers);
 
             TimeSpan? cacheDuration = null;
 
-            if (!string.IsNullOrEmpty(request.Tag) && cacheGuid == new Guid(request.Tag))
+            if (!string.IsNullOrEmpty(request.Tag))
             {
                 cacheDuration = TimeSpan.FromDays(365);
             }
 
-            // Avoid implicitly captured closure
-            var currentItem = item;
-            var currentRequest = request;
-
-            return ToCachedResult(cacheGuid, originalFileImageDateModified, cacheDuration, () => new ImageWriter
+            var responseHeaders = new Dictionary<string, string>
             {
-                Item = currentItem,
-                Request = currentRequest,
-                OriginalImageDateModified = originalFileImageDateModified,
-                Enhancers = supportedImageEnhancers
+                {"transferMode.dlna.org", "Interactive"},
+                {"realTimeInfo.dlna.org", "DLNA.ORG_TLAG=*"}
+            };
 
-            }, contentType);
+            return GetImageResult(item,
+                request,
+                imageInfo,
+                cropwhitespace,
+                outputFormats,
+                supportedImageEnhancers,
+                cacheDuration,
+                responseHeaders,
+                isHeadRequest);
+        }
+
+        private async Task<object> GetImageResult(IHasImages item,
+            ImageRequest request,
+            ItemImageInfo image,
+            bool cropwhitespace,
+            List<ImageFormat> supportedFormats,
+            List<IImageEnhancer> enhancers,
+            TimeSpan? cacheDuration,
+            IDictionary<string, string> headers,
+            bool isHeadRequest)
+        {
+            var options = new ImageProcessingOptions
+            {
+                CropWhiteSpace = cropwhitespace,
+                Enhancers = enhancers,
+                Height = request.Height,
+                ImageIndex = request.Index ?? 0,
+                Image = image,
+                Item = item,
+                MaxHeight = request.MaxHeight,
+                MaxWidth = request.MaxWidth,
+                Quality = request.Quality ?? 100,
+                Width = request.Width,
+                AddPlayedIndicator = request.AddPlayedIndicator,
+                PercentPlayed = request.PercentPlayed ?? 0,
+                UnplayedCount = request.UnplayedCount,
+                Blur = request.Blur,
+                BackgroundColor = request.BackgroundColor,
+                ForegroundLayer = request.ForegroundLayer,
+                SupportedOutputFormats = supportedFormats
+            };
+
+            var imageResult = await _imageProcessor.ProcessImage(options).ConfigureAwait(false);
+
+            headers["Vary"] = "Accept";
+
+            return await ResultFactory.GetStaticFileResult(Request, new StaticFileResultOptions
+            {
+                CacheDuration = cacheDuration,
+                ResponseHeaders = headers,
+                ContentType = imageResult.Item2,
+                DateLastModified = imageResult.Item3,
+                IsHeadRequest = isHeadRequest,
+                Path = imageResult.Item1,
+
+                // Sometimes imagemagick keeps a hold on the file briefly even after it's done writing to it.
+                // I'd rather do this than add a delay after saving the file
+                FileShare = FileShareMode.ReadWrite
+
+            }).ConfigureAwait(false);
+        }
+
+        private List<ImageFormat> GetOutputFormats(ImageRequest request, ItemImageInfo image, bool cropwhitespace, List<IImageEnhancer> enhancers)
+        {
+            if (!string.IsNullOrWhiteSpace(request.Format))
+            {
+                ImageFormat format;
+                if (Enum.TryParse(request.Format, true, out format))
+                {
+                    return new List<ImageFormat> { format };
+                }
+            }
+
+            var extension = Path.GetExtension(image.Path);
+            ImageFormat? inputFormat = null;
+
+            if (string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase))
+            {
+                inputFormat = ImageFormat.Jpg;
+            }
+            else if (string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase))
+            {
+                inputFormat = ImageFormat.Png;
+            }
+
+            var clientSupportedFormats = GetClientSupportedFormats();
+
+            var serverFormats = _imageProcessor.GetSupportedImageOutputFormats();
+            var outputFormats = new List<ImageFormat>();
+
+            // Client doesn't care about format, so start with webp if supported
+            if (serverFormats.Contains(ImageFormat.Webp) && clientSupportedFormats.Contains(ImageFormat.Webp))
+            {
+                outputFormats.Add(ImageFormat.Webp);
+            }
+
+            if (enhancers.Count > 0)
+            {
+                outputFormats.Add(ImageFormat.Png);
+            }
+
+            if (inputFormat.HasValue && inputFormat.Value == ImageFormat.Jpg)
+            {
+                outputFormats.Add(ImageFormat.Jpg);
+            }
+
+            // We can't predict if there will be transparency or not, so play it safe
+            outputFormats.Add(ImageFormat.Png);
+
+            return outputFormats;
+        }
+
+        private ImageFormat[] GetClientSupportedFormats()
+        {
+            //Logger.Debug("Request types: {0}", string.Join(",", Request.AcceptTypes ?? new string[] { }));
+            var supportsWebP = (Request.AcceptTypes ?? new string[] { }).Contains("image/webp", StringComparer.OrdinalIgnoreCase);
+
+            var userAgent = Request.UserAgent ?? string.Empty;
+
+            if (!supportsWebP)
+            {
+                if (string.Equals(Request.QueryString["accept"], "webp", StringComparison.OrdinalIgnoreCase))
+                {
+                    supportsWebP = true;
+                }
+            }
+
+            if (!supportsWebP)
+            {
+                if (userAgent.IndexOf("crosswalk", StringComparison.OrdinalIgnoreCase) != -1 &&
+                    userAgent.IndexOf("android", StringComparison.OrdinalIgnoreCase) != -1)
+                {
+                    supportsWebP = true;
+                }
+            }
+
+            if (supportsWebP)
+            {
+                // Not displaying properly on iOS
+                if (userAgent.IndexOf("cfnetwork", StringComparison.OrdinalIgnoreCase) == -1)
+                {
+                    return new[] { ImageFormat.Webp, ImageFormat.Jpg, ImageFormat.Png };
+                }
+            }
+
+            return new[] { ImageFormat.Jpg, ImageFormat.Png };
         }
 
         /// <summary>
         /// Gets the image path.
         /// </summary>
-        /// <param name="kernel">The kernel.</param>
         /// <param name="request">The request.</param>
         /// <param name="item">The item.</param>
         /// <returns>System.String.</returns>
-        private string GetImagePath(Kernel kernel, ImageRequest request, BaseItem item)
+        private ItemImageInfo GetImageInfo(ImageRequest request, IHasImages item)
         {
             var index = request.Index ?? 0;
 
-            return kernel.ImageManager.GetImagePath(item, request.Type, index);
+            return item.GetImageInfo(request.Type, index);
         }
 
         /// <summary>
@@ -726,7 +758,7 @@ namespace MediaBrowser.Api.Images
         /// <param name="imageType">Type of the image.</param>
         /// <param name="mimeType">Type of the MIME.</param>
         /// <returns>Task.</returns>
-        private async Task PostImage(BaseItem entity, Stream inputStream, ImageType imageType, string mimeType)
+        public async Task PostImage(BaseItem entity, Stream inputStream, ImageType imageType, string mimeType)
         {
             using (var reader = new StreamReader(inputStream))
             {
@@ -734,146 +766,18 @@ namespace MediaBrowser.Api.Images
 
                 var bytes = Convert.FromBase64String(text);
 
-                // Validate first
-                using (var memoryStream = new MemoryStream(bytes))
+                var memoryStream = new MemoryStream(bytes)
                 {
-                    using (var image = Image.FromStream(memoryStream))
-                    {
-                        Logger.Info("New image is {0}x{1}", image.Width, image.Height);
-                    }
-                }
+                    Position = 0
+                };
 
-                string filename;
+                // Handle image/png; charset=utf-8
+                mimeType = mimeType.Split(';').FirstOrDefault();
 
-                switch (imageType)
-                {
-                    case ImageType.Art:
-                        filename = "clearart";
-                        break;
-                    case ImageType.Primary:
-                        filename = entity is Episode ? Path.GetFileNameWithoutExtension(entity.Path) : "folder";
-                        break;
-                    case ImageType.Backdrop:
-                        filename = GetBackdropFilenameToSave(entity);
-                        break;
-                    case ImageType.Screenshot:
-                        filename = GetScreenshotFilenameToSave(entity);
-                        break;
-                    default:
-                        filename = imageType.ToString().ToLower();
-                        break;
-                }
+                await _providerManager.SaveImage(entity, memoryStream, mimeType, imageType, null, CancellationToken.None).ConfigureAwait(false);
 
-
-                var extension = mimeType.Split(';').First().Split('/').Last();
-
-                string oldImagePath;
-                switch (imageType)
-                {
-                    case ImageType.Backdrop:
-                    case ImageType.Screenshot:
-                        oldImagePath = null;
-                        break;
-                    default:
-                        oldImagePath = entity.GetImage(imageType);
-                        break;
-                }
-
-                // Don't save locally if there's no parent (special feature, trailer, etc)
-                var saveLocally = !(entity is Audio) && entity.Parent != null && !string.IsNullOrEmpty(entity.MetaLocation) || entity is User;
-
-                if (imageType != ImageType.Primary)
-                {
-                    if (entity is Episode)
-                    {
-                        saveLocally = false;
-                    }
-                }
-
-                if (entity.LocationType != LocationType.FileSystem)
-                {
-                    saveLocally = false;
-                }
-
-                var imagePath = _providerManager.GetSavePath(entity, filename + "." + extension, saveLocally);
-
-                // Save to file system
-                using (var fs = new FileStream(imagePath, FileMode.Create, FileAccess.Write, FileShare.Read, StreamDefaults.DefaultFileStreamBufferSize, true))
-                {
-                    await fs.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
-                }
-
-                if (imageType == ImageType.Screenshot)
-                {
-                    entity.ScreenshotImagePaths.Add(imagePath);
-                }
-                else if (imageType == ImageType.Backdrop)
-                {
-                    entity.BackdropImagePaths.Add(imagePath);
-                }
-                else
-                {
-                    // Set the image
-                    entity.SetImage(imageType, imagePath);
-                }
-
-                // If the new and old paths are different, delete the old one
-                if (!string.IsNullOrEmpty(oldImagePath) && !oldImagePath.Equals(imagePath, StringComparison.OrdinalIgnoreCase))
-                {
-                    File.Delete(oldImagePath);
-                }
-
-                // Directory watchers should repeat this, but do a quick refresh first
-                await entity.RefreshMetadata(CancellationToken.None, forceSave: true, allowSlowProviders: false).ConfigureAwait(false);
+                await entity.UpdateToRepository(ItemUpdateType.ImageUpdate, CancellationToken.None).ConfigureAwait(false);
             }
-        }
-
-        /// <summary>
-        /// Gets the backdrop filename to save.
-        /// </summary>
-        /// <param name="item">The item.</param>
-        /// <returns>System.String.</returns>
-        private string GetBackdropFilenameToSave(BaseItem item)
-        {
-            var paths = item.BackdropImagePaths.ToList();
-
-            if (!paths.Any(i => string.Equals(Path.GetFileNameWithoutExtension(i), "backdrop", StringComparison.OrdinalIgnoreCase)))
-            {
-                return "screenshot";
-            }
-
-            var index = 1;
-
-            while (paths.Any(i => string.Equals(Path.GetFileNameWithoutExtension(i), "backdrop" + index, StringComparison.OrdinalIgnoreCase)))
-            {
-                index++;
-            }
-
-            return "backdrop" + index;
-        }
-
-        /// <summary>
-        /// Gets the screenshot filename to save.
-        /// </summary>
-        /// <param name="item">The item.</param>
-        /// <returns>System.String.</returns>
-        private string GetScreenshotFilenameToSave(BaseItem item)
-        {
-            var paths = item.ScreenshotImagePaths.ToList();
-
-            if (!paths.Any(i => string.Equals(Path.GetFileNameWithoutExtension(i), "screenshot", StringComparison.OrdinalIgnoreCase)))
-            {
-                return "screenshot";
-            }
-
-            var index = 1;
-
-            while (paths.Any(i => string.Equals(Path.GetFileNameWithoutExtension(i), "screenshot" + index, StringComparison.OrdinalIgnoreCase)))
-            {
-                index++;
-            }
-
-            return "screenshot" + index;
         }
     }
 }

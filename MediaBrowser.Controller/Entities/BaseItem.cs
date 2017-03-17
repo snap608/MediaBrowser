@@ -1,68 +1,182 @@
 ﻿using MediaBrowser.Common.Extensions;
+using MediaBrowser.Controller.Channels;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Configuration;
-using MediaBrowser.Controller.IO;
+using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Library;
-using MediaBrowser.Controller.Localization;
+using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Controller.Providers;
-using MediaBrowser.Controller.Resolvers;
+using MediaBrowser.Model.Configuration;
+using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.Library;
 using MediaBrowser.Model.Logging;
+using MediaBrowser.Model.Users;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Common.IO;
+using MediaBrowser.Controller.Extensions;
+using MediaBrowser.Controller.IO;
+using MediaBrowser.Controller.Sorting;
+using MediaBrowser.Model.Extensions;
+using MediaBrowser.Model.Globalization;
+using MediaBrowser.Model.IO;
+using MediaBrowser.Model.LiveTv;
+using MediaBrowser.Model.Providers;
+using MediaBrowser.Model.Querying;
+using MediaBrowser.Model.Serialization;
 
 namespace MediaBrowser.Controller.Entities
 {
     /// <summary>
     /// Class BaseItem
     /// </summary>
-    public abstract class BaseItem : IHasProviderIds
+    public abstract class BaseItem : IHasProviderIds, IHasImages, IHasUserData, IHasMetadata, IHasLookupInfo<ItemLookupInfo>
     {
         protected BaseItem()
         {
-            Genres = new List<string>();
-            TrailerUrls = new List<string>();
-            Studios = new List<string>();
-            People = new List<PersonInfo>();
-            Taglines = new List<string>();
-            ScreenshotImagePaths = new List<string>();
-            BackdropImagePaths = new List<string>();
-            ProductionLocations = new List<string>();
-            Images = new Dictionary<ImageType, string>();
-            ProviderIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            Tags = new List<string>();
             ThemeSongIds = new List<Guid>();
             ThemeVideoIds = new List<Guid>();
-            LocalTrailerIds = new List<Guid>();
+            Keywords = new List<string>();
+            Tags = new List<string>();
+            Genres = new List<string>();
+            Studios = new List<string>();
+            ProviderIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             LockedFields = new List<MetadataFields>();
-            LockedImages = new List<ImageType>();
+            ImageInfos = new List<ItemImageInfo>();
+            InheritedTags = new List<string>();
+            ProductionLocations = new List<string>();
+            SourceType = SourceType.Library;
         }
+
+        public static readonly char[] SlugReplaceChars = { '?', '/', '&' };
+        public static char SlugChar = '-';
 
         /// <summary>
         /// The supported image extensions
         /// </summary>
-        public static readonly string[] SupportedImageExtensions = new[] { ".png", ".jpg", ".jpeg" };
-        
+        public static readonly string[] SupportedImageExtensions = { ".png", ".jpg", ".jpeg", ".tbn", ".gif" };
+
+        public static readonly List<string> SupportedImageExtensionsList = SupportedImageExtensions.ToList();
+
         /// <summary>
         /// The trailer folder name
         /// </summary>
-        public const string TrailerFolderName = "trailers";
-        public const string ThemeSongsFolderName = "theme-music";
-        public const string ThemeSongFilename = "theme";
-        public const string ThemeVideosFolderName = "backdrops";
-        public const string XbmcTrailerFileSuffix = "-trailer";
+        public static string TrailerFolderName = "trailers";
+        public static string ThemeSongsFolderName = "theme-music";
+        public static string ThemeSongFilename = "theme";
+        public static string ThemeVideosFolderName = "backdrops";
+
+        public List<Guid> ThemeSongIds { get; set; }
+        public List<Guid> ThemeVideoIds { get; set; }
+
+        [IgnoreDataMember]
+        public string PreferredMetadataCountryCode { get; set; }
+        [IgnoreDataMember]
+        public string PreferredMetadataLanguage { get; set; }
+
+        public long? Size { get; set; }
+        public string Container { get; set; }
+        [IgnoreDataMember]
+        public string Tagline { get; set; }
+
+        public List<ItemImageInfo> ImageInfos { get; set; }
+
+        [IgnoreDataMember]
+        public bool IsVirtualItem { get; set; }
+
+        /// <summary>
+        /// Gets or sets the album.
+        /// </summary>
+        /// <value>The album.</value>
+        [IgnoreDataMember]
+        public string Album { get; set; }
+
+        /// <summary>
+        /// Gets or sets the channel identifier.
+        /// </summary>
+        /// <value>The channel identifier.</value>
+        [IgnoreDataMember]
+        public string ChannelId { get; set; }
+
+        [IgnoreDataMember]
+        public virtual bool SupportsAddingToPlaylist
+        {
+            get
+            {
+                return false;
+            }
+        }
+
+        [IgnoreDataMember]
+        public virtual bool AlwaysScanInternalMetadataPath
+        {
+            get { return false; }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether this instance is in mixed folder.
+        /// </summary>
+        /// <value><c>true</c> if this instance is in mixed folder; otherwise, <c>false</c>.</value>
+        [IgnoreDataMember]
+        public bool IsInMixedFolder { get; set; }
+
+        [IgnoreDataMember]
+        protected virtual bool SupportsIsInMixedFolderDetection
+        {
+            get { return false; }
+        }
+
+        [IgnoreDataMember]
+        public virtual bool SupportsPlayedStatus
+        {
+            get
+            {
+                return false;
+            }
+        }
+
+        [IgnoreDataMember]
+        public virtual bool SupportsPositionTicksResume
+        {
+            get
+            {
+                return false;
+            }
+        }
+
+        public bool DetectIsInMixedFolder()
+        {
+            if (SupportsIsInMixedFolderDetection)
+            {
+
+            }
+
+            return IsInMixedFolder;
+        }
+
+        [IgnoreDataMember]
+        public virtual bool SupportsRemoteImageDownloading
+        {
+            get
+            {
+                return true;
+            }
+        }
 
         private string _name;
         /// <summary>
         /// Gets or sets the name.
         /// </summary>
         /// <value>The name.</value>
+        [IgnoreDataMember]
         public virtual string Name
         {
             get
@@ -78,33 +192,248 @@ namespace MediaBrowser.Controller.Entities
             }
         }
 
+        [IgnoreDataMember]
+        public string SlugName
+        {
+            get
+            {
+                var name = Name;
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    return string.Empty;
+                }
+
+                return SlugReplaceChars.Aggregate(name, (current, c) => current.Replace(c, SlugChar));
+            }
+        }
+
+        [IgnoreDataMember]
+        public bool IsUnaired
+        {
+            get { return PremiereDate.HasValue && PremiereDate.Value.ToLocalTime().Date >= DateTime.Now.Date; }
+        }
+
+        public int? TotalBitrate { get; set; }
+        public ExtraType? ExtraType { get; set; }
+
+        [IgnoreDataMember]
+        public bool IsThemeMedia
+        {
+            get
+            {
+                return ExtraType.HasValue && (ExtraType.Value == Model.Entities.ExtraType.ThemeSong || ExtraType.Value == Model.Entities.ExtraType.ThemeVideo);
+            }
+        }
+
+        [IgnoreDataMember]
+        public string OriginalTitle { get; set; }
+
         /// <summary>
         /// Gets or sets the id.
         /// </summary>
         /// <value>The id.</value>
-        public virtual Guid Id { get; set; }
+        [IgnoreDataMember]
+        public Guid Id { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this instance is hd.
+        /// </summary>
+        /// <value><c>true</c> if this instance is hd; otherwise, <c>false</c>.</value>
+        [IgnoreDataMember]
+        public bool? IsHD { get; set; }
+
+        /// <summary>
+        /// Gets or sets the audio.
+        /// </summary>
+        /// <value>The audio.</value>
+        [IgnoreDataMember]
+        public ProgramAudio? Audio { get; set; }
+
+        /// <summary>
+        /// Return the id that should be used to key display prefs for this item.
+        /// Default is based on the type for everything except actual generic folders.
+        /// </summary>
+        /// <value>The display prefs id.</value>
+        [IgnoreDataMember]
+        public virtual Guid DisplayPreferencesId
+        {
+            get
+            {
+                var thisType = GetType();
+                return thisType == typeof(Folder) ? Id : thisType.FullName.GetMD5();
+            }
+        }
 
         /// <summary>
         /// Gets or sets the path.
         /// </summary>
         /// <value>The path.</value>
+        [IgnoreDataMember]
         public virtual string Path { get; set; }
+
+        [IgnoreDataMember]
+        public virtual SourceType SourceType { get; set; }
+
+        /// <summary>
+        /// Returns the folder containing the item.
+        /// If the item is a folder, it returns the folder itself
+        /// </summary>
+        [IgnoreDataMember]
+        public virtual string ContainingFolderPath
+        {
+            get
+            {
+                if (IsFolder)
+                {
+                    return Path;
+                }
+
+                return System.IO.Path.GetDirectoryName(Path);
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the name of the service.
+        /// </summary>
+        /// <value>The name of the service.</value>
+        [IgnoreDataMember]
+        public string ServiceName { get; set; }
+
+        /// <summary>
+        /// If this content came from an external service, the id of the content on that service
+        /// </summary>
+        [IgnoreDataMember]
+        public string ExternalId { get; set; }
+
+        [IgnoreDataMember]
+        public string ExternalSeriesId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the etag.
+        /// </summary>
+        /// <value>The etag.</value>
+        [IgnoreDataMember]
+        public string ExternalEtag { get; set; }
+
+        [IgnoreDataMember]
+        public virtual bool IsHidden
+        {
+            get
+            {
+                return false;
+            }
+        }
+
+        [IgnoreDataMember]
+        public virtual bool IsOwnedItem
+        {
+            get
+            {
+                // Local trailer, special feature, theme video, etc.
+                // An item that belongs to another item but is not part of the Parent-Child tree
+                return !IsFolder && ParentId == Guid.Empty && LocationType == LocationType.FileSystem;
+            }
+        }
 
         /// <summary>
         /// Gets or sets the type of the location.
         /// </summary>
         /// <value>The type of the location.</value>
+        [IgnoreDataMember]
         public virtual LocationType LocationType
         {
             get
             {
-                if (string.IsNullOrEmpty(Path))
+                //if (IsOffline)
+                //{
+                //    return LocationType.Offline;
+                //}
+
+                if (string.IsNullOrWhiteSpace(Path))
                 {
+                    if (SourceType == SourceType.Channel)
+                    {
+                        return LocationType.Remote;
+                    }
+
                     return LocationType.Virtual;
                 }
 
-                return System.IO.Path.IsPathRooted(Path) ? LocationType.FileSystem : LocationType.Remote;
+                return FileSystem.IsPathFile(Path) ? LocationType.FileSystem : LocationType.Remote;
             }
+        }
+
+        [IgnoreDataMember]
+        public virtual bool SupportsLocalMetadata
+        {
+            get
+            {
+                if (SourceType == SourceType.Channel)
+                {
+                    return false;
+                }
+
+                var locationType = LocationType;
+
+                return locationType != LocationType.Remote && locationType != LocationType.Virtual;
+            }
+        }
+
+        [IgnoreDataMember]
+        public virtual string FileNameWithoutExtension
+        {
+            get
+            {
+                if (LocationType == LocationType.FileSystem)
+                {
+                    return System.IO.Path.GetFileNameWithoutExtension(Path);
+                }
+
+                return null;
+            }
+        }
+
+        [IgnoreDataMember]
+        public virtual bool EnableAlphaNumericSorting
+        {
+            get
+            {
+                return true;
+            }
+        }
+
+        private List<Tuple<StringBuilder, bool>> GetSortChunks(string s1)
+        {
+            var list = new List<Tuple<StringBuilder, bool>>();
+
+            int thisMarker = 0, thisNumericChunk = 0;
+
+            while (thisMarker < s1.Length)
+            {
+                if (thisMarker >= s1.Length)
+                {
+                    break;
+                }
+                char thisCh = s1[thisMarker];
+
+                StringBuilder thisChunk = new StringBuilder();
+
+                while ((thisMarker < s1.Length) && (thisChunk.Length == 0 || SortHelper.InChunk(thisCh, thisChunk[0])))
+                {
+                    thisChunk.Append(thisCh);
+                    thisMarker++;
+
+                    if (thisMarker < s1.Length)
+                    {
+                        thisCh = s1[thisMarker];
+                    }
+                }
+
+                var isNumeric = thisChunk.Length > 0 && char.IsDigit(thisChunk[0]);
+                list.Add(new Tuple<StringBuilder, bool>(thisChunk, isNumeric));
+            }
+
+            return list;
         }
 
         /// <summary>
@@ -114,27 +443,76 @@ namespace MediaBrowser.Controller.Entities
         [IgnoreDataMember]
         public string PrimaryImagePath
         {
-            get { return GetImage(ImageType.Primary); }
-            set { SetImage(ImageType.Primary, value); }
+            get { return this.GetImagePath(ImageType.Primary); }
         }
 
-        /// <summary>
-        /// Gets or sets the images.
-        /// </summary>
-        /// <value>The images.</value>
-        public virtual Dictionary<ImageType, string> Images { get; set; }
+        public virtual bool IsInternetMetadataEnabled()
+        {
+            return LibraryManager.GetLibraryOptions(this).EnableInternetProviders;
+        }
+
+        public virtual bool CanDelete()
+        {
+            if (SourceType == SourceType.Channel)
+            {
+                return false;
+            }
+
+            var locationType = LocationType;
+            return locationType != LocationType.Remote &&
+                   locationType != LocationType.Virtual;
+        }
+
+        public virtual bool IsAuthorizedToDelete(User user)
+        {
+            return user.Policy.EnableContentDeletion;
+        }
+
+        public bool CanDelete(User user)
+        {
+            return CanDelete() && IsAuthorizedToDelete(user);
+        }
+
+        public virtual bool CanDownload()
+        {
+            return false;
+        }
+
+        public virtual bool IsAuthorizedToDownload(User user)
+        {
+            return user.Policy.EnableContentDownloading;
+        }
+
+        public bool CanDownload(User user)
+        {
+            return CanDownload() && IsAuthorizedToDownload(user);
+        }
 
         /// <summary>
         /// Gets or sets the date created.
         /// </summary>
         /// <value>The date created.</value>
+        [IgnoreDataMember]
         public DateTime DateCreated { get; set; }
 
         /// <summary>
         /// Gets or sets the date modified.
         /// </summary>
         /// <value>The date modified.</value>
+        [IgnoreDataMember]
         public DateTime DateModified { get; set; }
+
+        [IgnoreDataMember]
+        public DateTime DateLastSaved { get; set; }
+
+        [IgnoreDataMember]
+        public DateTime DateLastRefreshed { get; set; }
+
+        [IgnoreDataMember]
+        public virtual bool EnableRefreshOnDateModifiedChange
+        {
+            get { return false; }
+        }
 
         /// <summary>
         /// The logger
@@ -143,6 +521,15 @@ namespace MediaBrowser.Controller.Entities
         public static ILibraryManager LibraryManager { get; set; }
         public static IServerConfigurationManager ConfigurationManager { get; set; }
         public static IProviderManager ProviderManager { get; set; }
+        public static ILocalizationManager LocalizationManager { get; set; }
+        public static IItemRepository ItemRepository { get; set; }
+        public static IFileSystem FileSystem { get; set; }
+        public static IUserDataManager UserDataManager { get; set; }
+        public static ILiveTvManager LiveTvManager { get; set; }
+        public static IChannelManager ChannelManager { get; set; }
+        public static ICollectionManager CollectionManager { get; set; }
+        public static IImageProcessor ImageProcessor { get; set; }
+        public static IMediaSourceManager MediaSourceManager { get; set; }
 
         /// <summary>
         /// Returns a <see cref="System.String" /> that represents this instance.
@@ -153,99 +540,15 @@ namespace MediaBrowser.Controller.Entities
             return Name;
         }
 
-        /// <summary>
-        /// Returns true if this item should not attempt to fetch metadata
-        /// </summary>
-        /// <value><c>true</c> if [dont fetch meta]; otherwise, <c>false</c>.</value>
-        public bool DontFetchMeta { get; set; }
+        [IgnoreDataMember]
+        public bool IsLocked { get; set; }
 
         /// <summary>
         /// Gets or sets the locked fields.
         /// </summary>
         /// <value>The locked fields.</value>
+        [IgnoreDataMember]
         public List<MetadataFields> LockedFields { get; set; }
-
-        /// <summary>
-        /// Gets or sets the locked images.
-        /// </summary>
-        /// <value>The locked images.</value>
-        public List<ImageType> LockedImages { get; set; }
-        
-        /// <summary>
-        /// Determines whether the item has a saved local image of the specified name (jpg or png).
-        /// </summary>
-        /// <param name="name">The name.</param>
-        /// <returns><c>true</c> if [has local image] [the specified item]; otherwise, <c>false</c>.</returns>
-        /// <exception cref="System.ArgumentNullException">name</exception>
-        public bool HasLocalImage(string name)
-        {
-            if (string.IsNullOrEmpty(name))
-            {
-                throw new ArgumentNullException("name");
-            }
-
-            return ResolveArgs.ContainsMetaFileByName(name + ".jpg") ||
-                ResolveArgs.ContainsMetaFileByName(name + ".png");
-        }
-
-        /// <summary>
-        /// Should be overridden to return the proper folder where metadata lives
-        /// </summary>
-        /// <value>The meta location.</value>
-        [IgnoreDataMember]
-        public virtual string MetaLocation
-        {
-            get
-            {
-                return Path ?? "";
-            }
-        }
-
-        /// <summary>
-        /// The _provider data
-        /// </summary>
-        private Dictionary<Guid, BaseProviderInfo> _providerData;
-        /// <summary>
-        /// Holds persistent data for providers like last refresh date.
-        /// Providers can use this to determine if they need to refresh.
-        /// The BaseProviderInfo class can be extended to hold anything a provider may need.
-        /// Keyed by a unique provider ID.
-        /// </summary>
-        /// <value>The provider data.</value>
-        public Dictionary<Guid, BaseProviderInfo> ProviderData
-        {
-            get
-            {
-                return _providerData ?? (_providerData = new Dictionary<Guid, BaseProviderInfo>());
-            }
-            set
-            {
-                _providerData = value;
-            }
-        }
-
-        /// <summary>
-        /// The _file system stamp
-        /// </summary>
-        private Guid? _fileSystemStamp;
-        /// <summary>
-        /// Gets a directory stamp, in the form of a string, that can be used for
-        /// comparison purposes to determine if the file system entries for this item have changed.
-        /// </summary>
-        /// <value>The file system stamp.</value>
-        [IgnoreDataMember]
-        public Guid FileSystemStamp
-        {
-            get
-            {
-                if (!_fileSystemStamp.HasValue)
-                {
-                    _fileSystemStamp = GetFileSystemStamp();
-                }
-
-                return _fileSystemStamp.Value;
-            }
-        }
 
         /// <summary>
         /// Gets the type of the media.
@@ -260,182 +563,37 @@ namespace MediaBrowser.Controller.Entities
             }
         }
 
-        /// <summary>
-        /// Gets a directory stamp, in the form of a string, that can be used for
-        /// comparison purposes to determine if the file system entries for this item have changed.
-        /// </summary>
-        /// <returns>Guid.</returns>
-        private Guid GetFileSystemStamp()
-        {
-            // If there's no path or the item is a file, there's nothing to do
-            if (LocationType != LocationType.FileSystem || !ResolveArgs.IsDirectory)
-            {
-                return Guid.Empty;
-            }
-
-            var sb = new StringBuilder();
-
-            // Record the name of each file 
-            // Need to sort these because accoring to msdn docs, our i/o methods are not guaranteed in any order
-            foreach (var file in ResolveArgs.FileSystemChildren
-                .Where(i => !i.Attributes.HasFlag(FileAttributes.System))
-                .OrderBy(f => f.Name))
-            {
-                sb.Append(file.Name);
-            }
-            foreach (var file in ResolveArgs.MetadataFiles.OrderBy(f => f.Name))
-            {
-                sb.Append(file.Name);
-            }
-
-            return sb.ToString().GetMD5();
-        }
-
-        /// <summary>
-        /// The _resolve args
-        /// </summary>
-        private ItemResolveArgs _resolveArgs;
-        /// <summary>
-        /// The _resolve args initialized
-        /// </summary>
-        private bool _resolveArgsInitialized;
-        /// <summary>
-        /// The _resolve args sync lock
-        /// </summary>
-        private object _resolveArgsSyncLock = new object();
-        /// <summary>
-        /// We attach these to the item so that we only ever have to hit the file system once
-        /// (this includes the children of the containing folder)
-        /// </summary>
-        /// <value>The resolve args.</value>
         [IgnoreDataMember]
-        public ItemResolveArgs ResolveArgs
+        public virtual IEnumerable<string> PhysicalLocations
         {
             get
             {
-                try
-                {
-                    LazyInitializer.EnsureInitialized(ref _resolveArgs, ref _resolveArgsInitialized, ref _resolveArgsSyncLock, () => CreateResolveArgs());
+                var locationType = LocationType;
 
-                }
-                catch (IOException ex)
+                if (locationType == LocationType.Remote || locationType == LocationType.Virtual)
                 {
-                    Logger.ErrorException("Error creating resolve args for ", ex, Path);
-
-                    throw;
+                    return new string[] { };
                 }
 
-                return _resolveArgs;
-            }
-            set
-            {
-                _resolveArgs = value;
-                _resolveArgsInitialized = value != null;
-
-                // Null this out so that it can be lazy loaded again
-                _fileSystemStamp = null;
+                return new[] { Path };
             }
         }
 
-        /// <summary>
-        /// Resets the resolve args.
-        /// </summary>
-        /// <param name="pathInfo">The path info.</param>
-        public void ResetResolveArgs(FileSystemInfo pathInfo)
-        {
-            ResolveArgs = CreateResolveArgs(pathInfo);
-        }
-
-        /// <summary>
-        /// Creates ResolveArgs on demand
-        /// </summary>
-        /// <param name="pathInfo">The path info.</param>
-        /// <returns>ItemResolveArgs.</returns>
-        /// <exception cref="System.IO.IOException">Unable to retrieve file system info for  + path</exception>
-        protected internal virtual ItemResolveArgs CreateResolveArgs(FileSystemInfo pathInfo = null)
-        {
-            var path = Path;
-
-            // non file-system entries will not have a path
-            if (LocationType != LocationType.FileSystem || string.IsNullOrEmpty(path))
-            {
-                return new ItemResolveArgs(ConfigurationManager.ApplicationPaths);
-            }
-
-            if (UseParentPathToCreateResolveArgs)
-            {
-                path = System.IO.Path.GetDirectoryName(path);
-            }
-
-            pathInfo = pathInfo ?? FileSystem.GetFileSystemInfo(path);
-
-            if (pathInfo == null || !pathInfo.Exists)
-            {
-                throw new IOException("Unable to retrieve file system info for " + path);
-            }
-
-            var args = new ItemResolveArgs(ConfigurationManager.ApplicationPaths)
-            {
-                FileInfo = pathInfo,
-                Path = path,
-                Parent = Parent
-            };
-
-            // Gather child folder and files
-
-            if (args.IsDirectory)
-            {
-                var isPhysicalRoot = args.IsPhysicalRoot;
-
-                // When resolving the root, we need it's grandchildren (children of user views)
-                var flattenFolderDepth = isPhysicalRoot ? 2 : 0;
-
-                args.FileSystemDictionary = FileData.GetFilteredFileSystemEntries(args.Path, Logger, flattenFolderDepth: flattenFolderDepth, args: args, resolveShortcuts: isPhysicalRoot || args.IsVf);
-
-                // Need to remove subpaths that may have been resolved from shortcuts
-                // Example: if \\server\movies exists, then strip out \\server\movies\action
-                if (isPhysicalRoot)
-                {
-                    var paths = args.FileSystemDictionary.Keys.ToList();
-
-                    foreach (var subPath in paths
-                        .Where(subPath => !subPath.EndsWith(":\\", StringComparison.OrdinalIgnoreCase) && paths.Any(i => subPath.StartsWith(i.TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))))
-                    {
-                        Logger.Info("Ignoring duplicate path: {0}", subPath);
-                        args.FileSystemDictionary.Remove(subPath);
-                    }
-                }
-            }
-
-            //update our dates
-            EntityResolutionHelper.EnsureDates(this, args);
-
-            return args;
-        }
-
-        /// <summary>
-        /// Some subclasses will stop resolving at a directory and point their Path to a file within. This will help ensure the on-demand resolve args are identical to the
-        /// original ones.
-        /// </summary>
-        /// <value><c>true</c> if [use parent path to create resolve args]; otherwise, <c>false</c>.</value>
-        [IgnoreDataMember]
-        protected virtual bool UseParentPathToCreateResolveArgs
-        {
-            get
-            {
-                return false;
-            }
-        }
-
+        private string _forcedSortName;
         /// <summary>
         /// Gets or sets the name of the forced sort.
         /// </summary>
         /// <value>The name of the forced sort.</value>
-        public string ForcedSortName { get; set; }
+        [IgnoreDataMember]
+        public string ForcedSortName
+        {
+            get { return _forcedSortName; }
+            set { _forcedSortName = value; _sortName = null; }
+        }
 
         private string _sortName;
         /// <summary>
-        /// Gets or sets the name of the sort.
+        /// Gets the name of the sort.
         /// </summary>
         /// <value>The name of the sort.</value>
         [IgnoreDataMember]
@@ -443,8 +601,45 @@ namespace MediaBrowser.Controller.Entities
         {
             get
             {
-                return ForcedSortName ?? _sortName ?? (_sortName = CreateSortName());
+                if (_sortName == null)
+                {
+                    if (!string.IsNullOrWhiteSpace(ForcedSortName))
+                    {
+                        // Need the ToLower because that's what CreateSortName does
+                        _sortName = ModifySortChunks(ForcedSortName).ToLower();
+                    }
+                    else
+                    {
+                        _sortName = CreateSortName();
+                    }
+                }
+                return _sortName;
             }
+            set
+            {
+                _sortName = value;
+            }
+        }
+
+        public string GetInternalMetadataPath()
+        {
+            var basePath = ConfigurationManager.ApplicationPaths.InternalMetadataPath;
+
+            return GetInternalMetadataPath(basePath);
+        }
+
+        protected virtual string GetInternalMetadataPath(string basePath)
+        {
+            if (SourceType == SourceType.Channel)
+            {
+                return System.IO.Path.Combine(basePath, "channels", ChannelId, Id.ToString("N"));
+            }
+
+            var idString = Id.ToString("N");
+
+            basePath = System.IO.Path.Combine(basePath, "library");
+
+            return System.IO.Path.Combine(basePath, idString.Substring(0, 2), idString);
         }
 
         /// <summary>
@@ -454,6 +649,11 @@ namespace MediaBrowser.Controller.Entities
         protected virtual string CreateSortName()
         {
             if (Name == null) return null; //some items may not have name filled in properly
+
+            if (!EnableAlphaNumericSorting)
+            {
+                return Name.TrimStart();
+            }
 
             var sortable = Name.Trim().ToLower();
             sortable = ConfigurationManager.Configuration.SortRemoveCharacters.Aggregate(sortable, (current, search) => current.Replace(search.ToLower(), string.Empty));
@@ -477,55 +677,119 @@ namespace MediaBrowser.Controller.Entities
                     sortable = sortable.Remove(sortable.Length - (searchLower.Length + 1));
                 }
             }
-            return sortable;
+            return ModifySortChunks(sortable);
         }
+
+        private string ModifySortChunks(string name)
+        {
+            var chunks = GetSortChunks(name);
+
+            var builder = new StringBuilder();
+
+            foreach (var chunk in chunks)
+            {
+                var chunkBuilder = chunk.Item1;
+
+                // This chunk is numeric
+                if (chunk.Item2)
+                {
+                    while (chunkBuilder.Length < 10)
+                    {
+                        chunkBuilder.Insert(0, '0');
+                    }
+                }
+
+                builder.Append(chunkBuilder);
+            }
+            //Logger.Debug("ModifySortChunks Start: {0} End: {1}", name, builder.ToString());
+            return builder.ToString().RemoveDiacritics();
+        }
+
+        [IgnoreDataMember]
+        public Guid ParentId { get; set; }
 
         /// <summary>
         /// Gets or sets the parent.
         /// </summary>
         /// <value>The parent.</value>
         [IgnoreDataMember]
-        public Folder Parent { get; set; }
+        public Folder Parent
+        {
+            get { return GetParent() as Folder; }
+            set
+            {
+
+            }
+        }
+
+        public void SetParent(Folder parent)
+        {
+            ParentId = parent == null ? Guid.Empty : parent.Id;
+        }
+
+        [IgnoreDataMember]
+        public IEnumerable<Folder> Parents
+        {
+            get { return GetParents().OfType<Folder>(); }
+        }
+
+        public BaseItem GetParent()
+        {
+            if (ParentId != Guid.Empty)
+            {
+                return LibraryManager.GetItemById(ParentId);
+            }
+
+            return null;
+        }
+
+        public IEnumerable<BaseItem> GetParents()
+        {
+            var parent = GetParent();
+
+            while (parent != null)
+            {
+                yield return parent;
+
+                parent = parent.GetParent();
+            }
+        }
 
         /// <summary>
-        /// Gets the collection folder parent.
+        /// Finds a parent of a given type
         /// </summary>
-        /// <value>The collection folder parent.</value>
+        /// <typeparam name="T"></typeparam>
+        /// <returns>``0.</returns>
+        public T FindParent<T>()
+            where T : Folder
+        {
+            return GetParents().OfType<T>().FirstOrDefault();
+        }
+
         [IgnoreDataMember]
-        public Folder CollectionFolder
+        public virtual Guid? DisplayParentId
         {
             get
             {
-                if (this is AggregateFolder)
+                if (ParentId == Guid.Empty)
                 {
                     return null;
                 }
+                return ParentId;
+            }
+        }
 
-                if (IsFolder)
+        [IgnoreDataMember]
+        public BaseItem DisplayParent
+        {
+            get
+            {
+                var id = DisplayParentId;
+                if (!id.HasValue || id.Value == Guid.Empty)
                 {
-                    var iCollectionFolder = this as ICollectionFolder;
-
-                    if (iCollectionFolder != null)
-                    {
-                        return (Folder)this;
-                    }
+                    return null;
                 }
-
-                var parent = Parent;
-
-                while (parent != null)
-                {
-                    var iCollectionFolder = parent as ICollectionFolder;
-
-                    if (iCollectionFolder != null)
-                    {
-                        return parent;
-                    }
-
-                    parent = parent.Parent;
-                }
-
-                return null;
+                return LibraryManager.GetItemById(id.Value);
             }
         }
 
@@ -533,502 +797,456 @@ namespace MediaBrowser.Controller.Entities
         /// When the item first debuted. For movies this could be premiere date, episodes would be first aired
         /// </summary>
         /// <value>The premiere date.</value>
+        [IgnoreDataMember]
         public DateTime? PremiereDate { get; set; }
 
         /// <summary>
         /// Gets or sets the end date.
         /// </summary>
         /// <value>The end date.</value>
+        [IgnoreDataMember]
         public DateTime? EndDate { get; set; }
 
         /// <summary>
         /// Gets or sets the display type of the media.
         /// </summary>
         /// <value>The display type of the media.</value>
-        public virtual string DisplayMediaType { get; set; }
-
-        /// <summary>
-        /// Gets or sets the backdrop image paths.
-        /// </summary>
-        /// <value>The backdrop image paths.</value>
-        public List<string> BackdropImagePaths { get; set; }
-
-        /// <summary>
-        /// Gets or sets the screenshot image paths.
-        /// </summary>
-        /// <value>The screenshot image paths.</value>
-        public List<string> ScreenshotImagePaths { get; set; }
+        [IgnoreDataMember]
+        public string DisplayMediaType { get; set; }
 
         /// <summary>
         /// Gets or sets the official rating.
         /// </summary>
         /// <value>The official rating.</value>
-        public virtual string OfficialRating { get; set; }
-
-        /// <summary>
-        /// Gets or sets the custom rating.
-        /// </summary>
-        /// <value>The custom rating.</value>
-        public virtual string CustomRating { get; set; }
-
-        /// <summary>
-        /// Gets or sets the language.
-        /// </summary>
-        /// <value>The language.</value>
-        public string Language { get; set; }
-        /// <summary>
-        /// Gets or sets the overview.
-        /// </summary>
-        /// <value>The overview.</value>
-        public string Overview { get; set; }
-        /// <summary>
-        /// Gets or sets the taglines.
-        /// </summary>
-        /// <value>The taglines.</value>
-        public List<string> Taglines { get; set; }
-
-        /// <summary>
-        /// Gets or sets the people.
-        /// </summary>
-        /// <value>The people.</value>
-        public List<PersonInfo> People { get; set; }
-
-        /// <summary>
-        /// Gets or sets the tags.
-        /// </summary>
-        /// <value>The tags.</value>
-        public List<string> Tags { get; set; }
-
-        /// <summary>
-        /// Override this if you need to combine/collapse person information
-        /// </summary>
-        /// <value>All people.</value>
         [IgnoreDataMember]
-        public virtual IEnumerable<PersonInfo> AllPeople
-        {
-            get { return People; }
-        }
+        public string OfficialRating { get; set; }
 
-        /// <summary>
-        /// Gets or sets the studios.
-        /// </summary>
-        /// <value>The studios.</value>
-        public virtual List<string> Studios { get; set; }
+        [IgnoreDataMember]
+        public int InheritedParentalRatingValue { get; set; }
 
-        /// <summary>
-        /// Gets or sets the genres.
-        /// </summary>
-        /// <value>The genres.</value>
-        public virtual List<string> Genres { get; set; }
-
-        /// <summary>
-        /// Gets or sets the home page URL.
-        /// </summary>
-        /// <value>The home page URL.</value>
-        public string HomePageUrl { get; set; }
-
-        /// <summary>
-        /// Gets or sets the budget.
-        /// </summary>
-        /// <value>The budget.</value>
-        public double? Budget { get; set; }
-
-        /// <summary>
-        /// Gets or sets the revenue.
-        /// </summary>
-        /// <value>The revenue.</value>
-        public double? Revenue { get; set; }
-
-        /// <summary>
-        /// Gets or sets the production locations.
-        /// </summary>
-        /// <value>The production locations.</value>
-        public List<string> ProductionLocations { get; set; }
+        [IgnoreDataMember]
+        public List<string> InheritedTags { get; set; }
 
         /// <summary>
         /// Gets or sets the critic rating.
         /// </summary>
         /// <value>The critic rating.</value>
+        [IgnoreDataMember]
         public float? CriticRating { get; set; }
 
         /// <summary>
         /// Gets or sets the critic rating summary.
         /// </summary>
         /// <value>The critic rating summary.</value>
+        [IgnoreDataMember]
         public string CriticRatingSummary { get; set; }
+
+        /// <summary>
+        /// Gets or sets the official rating description.
+        /// </summary>
+        /// <value>The official rating description.</value>
+        [IgnoreDataMember]
+        public string OfficialRatingDescription { get; set; }
+
+        /// <summary>
+        /// Gets or sets the custom rating.
+        /// </summary>
+        /// <value>The custom rating.</value>
+        [IgnoreDataMember]
+        public string CustomRating { get; set; }
+
+        /// <summary>
+        /// Gets or sets the overview.
+        /// </summary>
+        /// <value>The overview.</value>
+        [IgnoreDataMember]
+        public string Overview { get; set; }
+
+        /// <summary>
+        /// Gets or sets the studios.
+        /// </summary>
+        /// <value>The studios.</value>
+        [IgnoreDataMember]
+        public List<string> Studios { get; set; }
+
+        /// <summary>
+        /// Gets or sets the genres.
+        /// </summary>
+        /// <value>The genres.</value>
+        [IgnoreDataMember]
+        public List<string> Genres { get; set; }
+
+        /// <summary>
+        /// Gets or sets the tags.
+        /// </summary>
+        /// <value>The tags.</value>
+        [IgnoreDataMember]
+        public List<string> Tags { get; set; }
+
+        public List<string> Keywords { get; set; }
+        public List<string> ProductionLocations { get; set; }
+
+        /// <summary>
+        /// Gets or sets the home page URL.
+        /// </summary>
+        /// <value>The home page URL.</value>
+        [IgnoreDataMember]
+        public string HomePageUrl { get; set; }
 
         /// <summary>
         /// Gets or sets the community rating.
         /// </summary>
         /// <value>The community rating.</value>
+        [IgnoreDataMember]
         public float? CommunityRating { get; set; }
+
+        /// <summary>
+        /// Gets or sets the community rating vote count.
+        /// </summary>
+        /// <value>The community rating vote count.</value>
+        [IgnoreDataMember]
+        public int? VoteCount { get; set; }
+
         /// <summary>
         /// Gets or sets the run time ticks.
         /// </summary>
         /// <value>The run time ticks.</value>
+        [IgnoreDataMember]
         public long? RunTimeTicks { get; set; }
 
-        /// <summary>
-        /// Gets or sets the original run time ticks.
-        /// </summary>
-        /// <value>The original run time ticks.</value>
-        public long? OriginalRunTimeTicks { get; set; }
-        /// <summary>
-        /// Gets or sets the aspect ratio.
-        /// </summary>
-        /// <value>The aspect ratio.</value>
-        public string AspectRatio { get; set; }
         /// <summary>
         /// Gets or sets the production year.
         /// </summary>
         /// <value>The production year.</value>
-        public virtual int? ProductionYear { get; set; }
+        [IgnoreDataMember]
+        public int? ProductionYear { get; set; }
 
         /// <summary>
         /// If the item is part of a series, this is it's number in the series.
         /// This could be episode number, album track number, etc.
         /// </summary>
         /// <value>The index number.</value>
+        [IgnoreDataMember]
         public int? IndexNumber { get; set; }
 
         /// <summary>
         /// For an episode this could be the season number, or for a song this could be the disc number.
         /// </summary>
         /// <value>The parent index number.</value>
+        [IgnoreDataMember]
         public int? ParentIndexNumber { get; set; }
 
-        public List<Guid> ThemeSongIds { get; set; }
-        public List<Guid> ThemeVideoIds { get; set; }
-        public List<Guid> LocalTrailerIds { get; set; }
+        [IgnoreDataMember]
+        public string OfficialRatingForComparison
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(OfficialRating))
+                {
+                    return OfficialRating;
+                }
+
+                var parent = DisplayParent;
+                if (parent != null)
+                {
+                    return parent.OfficialRatingForComparison;
+                }
+
+                return null;
+            }
+        }
+
+        [IgnoreDataMember]
+        public string CustomRatingForComparison
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(CustomRating))
+                {
+                    return CustomRating;
+                }
+
+                var parent = DisplayParent;
+                if (parent != null)
+                {
+                    return parent.CustomRatingForComparison;
+                }
+
+                return null;
+            }
+        }
 
         /// <summary>
-        /// Loads local trailers from the file system
+        /// Gets the play access.
         /// </summary>
-        /// <returns>List{Video}.</returns>
-        private IEnumerable<Trailer> LoadLocalTrailers()
+        /// <param name="user">The user.</param>
+        /// <returns>PlayAccess.</returns>
+        public PlayAccess GetPlayAccess(User user)
         {
-            if (LocationType != LocationType.FileSystem)
+            if (!user.Policy.EnableMediaPlayback)
             {
-                return new List<Trailer>();
+                return PlayAccess.None;
             }
 
-            ItemResolveArgs resolveArgs;
+            //if (!user.IsParentalScheduleAllowed())
+            //{
+            //    return PlayAccess.None;
+            //}
 
-            try
-            {
-                resolveArgs = ResolveArgs;
-            }
-            catch (IOException ex)
-            {
-                Logger.ErrorException("Error getting ResolveArgs for {0}", ex, Path);
-                return new List<Trailer>();
-            }
-
-            if (!resolveArgs.IsDirectory)
-            {
-                return new List<Trailer>();
-            }
-
-            var files = new List<FileSystemInfo>();
-
-            var folder = resolveArgs.GetFileSystemEntryByName(TrailerFolderName);
-
-            // Path doesn't exist. No biggie
-            if (folder != null)
-            {
-                try
-                {
-                    files.AddRange(new DirectoryInfo(folder.FullName).EnumerateFiles());
-                }
-                catch (IOException ex)
-                {
-                    Logger.ErrorException("Error loading trailers for {0}", ex, Name);
-                }
-            }
-
-            // Support xbmc trailers (-trailer suffix on video file names)
-            files.AddRange(resolveArgs.FileSystemChildren.Where(i =>
-            {
-                if (!i.Attributes.HasFlag(FileAttributes.Directory))
-                {
-                    if (System.IO.Path.GetFileNameWithoutExtension(i.Name).EndsWith(XbmcTrailerFileSuffix, StringComparison.OrdinalIgnoreCase) && !string.Equals(Path, i.FullName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }));
-
-            var trailers= LibraryManager.ResolvePaths<Trailer>(files, null).Select(video =>
-            {
-                // Try to retrieve it from the db. If we don't find it, use the resolved version
-                var dbItem = LibraryManager.RetrieveItem(video.Id) as Trailer;
-
-                if (dbItem != null)
-                {
-                    dbItem.ResolveArgs = video.ResolveArgs;
-                    video = dbItem;
-                }
-
-                return video;
-            }).ToList();
-
-            return trailers;
+            return PlayAccess.Full;
         }
 
         /// <summary>
         /// Loads the theme songs.
         /// </summary>
         /// <returns>List{Audio.Audio}.</returns>
-        private IEnumerable<Audio.Audio> LoadThemeSongs()
+        private static IEnumerable<Audio.Audio> LoadThemeSongs(List<FileSystemMetadata> fileSystemChildren, IDirectoryService directoryService)
         {
-            if (LocationType != LocationType.FileSystem)
-            {
-                return new List<Audio.Audio>();
-            }
-
-            ItemResolveArgs resolveArgs;
-
-            try
-            {
-                resolveArgs = ResolveArgs;
-            }
-            catch (IOException ex)
-            {
-                Logger.ErrorException("Error getting ResolveArgs for {0}", ex, Path);
-                return new List<Audio.Audio>();
-            }
-
-            if (!resolveArgs.IsDirectory)
-            {
-                return new List<Audio.Audio>();
-            }
-
-            var files = new List<FileSystemInfo>();
-
-            var folder = resolveArgs.GetFileSystemEntryByName(ThemeSongsFolderName);
-
-            // Path doesn't exist. No biggie
-            if (folder != null)
-            {
-                try
-                {
-                    files.AddRange(new DirectoryInfo(folder.FullName).EnumerateFiles());
-                }
-                catch (IOException ex)
-                {
-                    Logger.ErrorException("Error loading theme songs for {0}", ex, Name);
-                }
-            }
+            var files = fileSystemChildren.Where(i => i.IsDirectory)
+                .Where(i => string.Equals(i.Name, ThemeSongsFolderName, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(i => directoryService.GetFiles(i.FullName))
+                .ToList();
 
             // Support plex/xbmc convention
-            files.AddRange(resolveArgs.FileSystemChildren
-                .Where(i => string.Equals(System.IO.Path.GetFileNameWithoutExtension(i.FullName), ThemeSongFilename, StringComparison.OrdinalIgnoreCase) && EntityResolutionHelper.IsAudioFile(i.FullName))
+            files.AddRange(fileSystemChildren
+                .Where(i => !i.IsDirectory && string.Equals(FileSystem.GetFileNameWithoutExtension(i), ThemeSongFilename, StringComparison.OrdinalIgnoreCase))
                 );
 
-            return LibraryManager.ResolvePaths<Audio.Audio>(files, null).Select(audio =>
-            {
-                // Try to retrieve it from the db. If we don't find it, use the resolved version
-                var dbItem = LibraryManager.RetrieveItem(audio.Id) as Audio.Audio;
-
-                if (dbItem != null)
+            return LibraryManager.ResolvePaths(files, directoryService, null, new LibraryOptions())
+                .OfType<Audio.Audio>()
+                .Select(audio =>
                 {
-                    dbItem.ResolveArgs = audio.ResolveArgs;
-                    audio = dbItem;
-                }
+                    // Try to retrieve it from the db. If we don't find it, use the resolved version
+                    var dbItem = LibraryManager.GetItemById(audio.Id) as Audio.Audio;
 
-                return audio;
-            }).ToList();
+                    if (dbItem != null)
+                    {
+                        audio = dbItem;
+                    }
+
+                    audio.ExtraType = MediaBrowser.Model.Entities.ExtraType.ThemeSong;
+
+                    return audio;
+
+                    // Sort them so that the list can be easily compared for changes
+                }).OrderBy(i => i.Path).ToList();
         }
 
         /// <summary>
         /// Loads the video backdrops.
         /// </summary>
         /// <returns>List{Video}.</returns>
-        private IEnumerable<Video> LoadThemeVideos()
+        private static IEnumerable<Video> LoadThemeVideos(IEnumerable<FileSystemMetadata> fileSystemChildren, IDirectoryService directoryService)
         {
-            if (LocationType != LocationType.FileSystem)
-            {
-                return new List<Video>();
-            }
+            var files = fileSystemChildren.Where(i => i.IsDirectory)
+                .Where(i => string.Equals(i.Name, ThemeVideosFolderName, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(i => directoryService.GetFiles(i.FullName));
 
-            ItemResolveArgs resolveArgs;
-
-            try
-            {
-                resolveArgs = ResolveArgs;
-            }
-            catch (IOException ex)
-            {
-                Logger.ErrorException("Error getting ResolveArgs for {0}", ex, Path);
-                return new List<Video>();
-            }
-
-            if (!resolveArgs.IsDirectory)
-            {
-                return new List<Video>();
-            }
-
-            var folder = resolveArgs.GetFileSystemEntryByName(ThemeVideosFolderName);
-
-            // Path doesn't exist. No biggie
-            if (folder == null)
-            {
-                return new List<Video>();
-            }
-
-            IEnumerable<FileSystemInfo> files;
-
-            try
-            {
-                files = new DirectoryInfo(folder.FullName).EnumerateFiles();
-            }
-            catch (IOException ex)
-            {
-                Logger.ErrorException("Error loading video backdrops for {0}", ex, Name);
-                return new List<Video>();
-            }
-
-            return LibraryManager.ResolvePaths<Video>(files, null).Select(item =>
-            {
-                // Try to retrieve it from the db. If we don't find it, use the resolved version
-                var dbItem = LibraryManager.RetrieveItem(item.Id) as Video;
-
-                if (dbItem != null)
+            return LibraryManager.ResolvePaths(files, directoryService, null, new LibraryOptions())
+                .OfType<Video>()
+                .Select(item =>
                 {
-                    dbItem.ResolveArgs = item.ResolveArgs;
-                    item = dbItem;
-                }
+                    // Try to retrieve it from the db. If we don't find it, use the resolved version
+                    var dbItem = LibraryManager.GetItemById(item.Id) as Video;
 
-                return item;
-            }).ToList();
+                    if (dbItem != null)
+                    {
+                        item = dbItem;
+                    }
+
+                    item.ExtraType = MediaBrowser.Model.Entities.ExtraType.ThemeVideo;
+
+                    return item;
+
+                    // Sort them so that the list can be easily compared for changes
+                }).OrderBy(i => i.Path).ToList();
+        }
+
+        public Task RefreshMetadata(CancellationToken cancellationToken)
+        {
+            return RefreshMetadata(new MetadataRefreshOptions(new DirectoryService(Logger, FileSystem)), cancellationToken);
         }
 
         /// <summary>
         /// Overrides the base implementation to refresh metadata for local trailers
         /// </summary>
+        /// <param name="options">The options.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
-        /// <param name="forceSave">if set to <c>true</c> [is new item].</param>
-        /// <param name="forceRefresh">if set to <c>true</c> [force].</param>
-        /// <param name="allowSlowProviders">if set to <c>true</c> [allow slow providers].</param>
-        /// <param name="resetResolveArgs">if set to <c>true</c> [reset resolve args].</param>
         /// <returns>true if a provider reports we changed</returns>
-        public virtual async Task<bool> RefreshMetadata(CancellationToken cancellationToken, bool forceSave = false, bool forceRefresh = false, bool allowSlowProviders = true, bool resetResolveArgs = true)
+        public async Task<ItemUpdateType> RefreshMetadata(MetadataRefreshOptions options, CancellationToken cancellationToken)
         {
-            if (resetResolveArgs)
+            var locationType = LocationType;
+
+            var requiresSave = false;
+
+            if (SupportsOwnedItems)
             {
-                ResolveArgs = null;
+                try
+                {
+                    var files = locationType != LocationType.Remote && locationType != LocationType.Virtual ?
+                        GetFileSystemChildren(options.DirectoryService).ToList() :
+                        new List<FileSystemMetadata>();
+
+                    var ownedItemsChanged = await RefreshedOwnedItems(options, files, cancellationToken).ConfigureAwait(false);
+
+                    if (ownedItemsChanged)
+                    {
+                        requiresSave = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.ErrorException("Error refreshing owned items for {0}", ex, Path ?? Name);
+                }
             }
 
-            // Refresh for the item
-            var itemRefreshTask = ProviderManager.ExecuteMetadataProviders(this, cancellationToken, forceRefresh, allowSlowProviders);
+            var refreshOptions = requiresSave
+                ? new MetadataRefreshOptions(options)
+                {
+                    ForceSave = true
+                }
+                : options;
 
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var themeSongsChanged = await RefreshThemeSongs(cancellationToken, forceSave, forceRefresh, allowSlowProviders).ConfigureAwait(false);
-
-            var themeVideosChanged = await RefreshThemeVideos(cancellationToken, forceSave, forceRefresh, allowSlowProviders).ConfigureAwait(false);
-
-            var localTrailersChanged = await RefreshLocalTrailers(cancellationToken, forceSave, forceRefresh, allowSlowProviders).ConfigureAwait(false);
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // Get the result from the item task
-            var changed = await itemRefreshTask.ConfigureAwait(false);
-
-            if (changed || forceSave || themeSongsChanged || themeVideosChanged || localTrailersChanged)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await LibraryManager.UpdateItem(this, cancellationToken).ConfigureAwait(false);
-            }
-
-            return changed;
+            return await ProviderManager.RefreshSingleItem(this, refreshOptions, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task<bool> RefreshLocalTrailers(CancellationToken cancellationToken, bool forceSave = false, bool forceRefresh = false, bool allowSlowProviders = true)
+        [IgnoreDataMember]
+        protected virtual bool SupportsOwnedItems
         {
-            var newItems = LoadLocalTrailers().ToList();
+            get { return IsFolder || GetParent() != null; }
+        }
+
+        [IgnoreDataMember]
+        public virtual bool SupportsPeople
+        {
+            get { return true; }
+        }
+
+        [IgnoreDataMember]
+        public virtual bool SupportsThemeMedia
+        {
+            get { return false; }
+        }
+
+        /// <summary>
+        /// Refreshes owned items such as trailers, theme videos, special features, etc.
+        /// Returns true or false indicating if changes were found.
+        /// </summary>
+        /// <param name="options"></param>
+        /// <param name="fileSystemChildren"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        protected virtual async Task<bool> RefreshedOwnedItems(MetadataRefreshOptions options, List<FileSystemMetadata> fileSystemChildren, CancellationToken cancellationToken)
+        {
+            var themeSongsChanged = false;
+
+            var themeVideosChanged = false;
+
+            var localTrailersChanged = false;
+
+            if (LocationType == LocationType.FileSystem && GetParent() != null)
+            {
+                if (SupportsThemeMedia)
+                {
+                    if (!DetectIsInMixedFolder())
+                    {
+                        themeSongsChanged = await RefreshThemeSongs(this, options, fileSystemChildren, cancellationToken).ConfigureAwait(false);
+
+                        themeVideosChanged = await RefreshThemeVideos(this, options, fileSystemChildren, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+
+                var hasTrailers = this as IHasTrailers;
+                if (hasTrailers != null)
+                {
+                    localTrailersChanged = await RefreshLocalTrailers(hasTrailers, options, fileSystemChildren, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            return themeSongsChanged || themeVideosChanged || localTrailersChanged;
+        }
+
+        protected virtual IEnumerable<FileSystemMetadata> GetFileSystemChildren(IDirectoryService directoryService)
+        {
+            var path = ContainingFolderPath;
+
+            return directoryService.GetFileSystemEntries(path);
+        }
+
+        private async Task<bool> RefreshLocalTrailers(IHasTrailers item, MetadataRefreshOptions options, List<FileSystemMetadata> fileSystemChildren, CancellationToken cancellationToken)
+        {
+            var newItems = LibraryManager.FindTrailers(this, fileSystemChildren, options.DirectoryService).ToList();
+
             var newItemIds = newItems.Select(i => i.Id).ToList();
 
-            var itemsChanged = !LocalTrailerIds.SequenceEqual(newItemIds);
+            var itemsChanged = !item.LocalTrailerIds.SequenceEqual(newItemIds);
 
-            var tasks = newItems.Select(i => i.RefreshMetadata(cancellationToken, forceSave, forceRefresh, allowSlowProviders));
+            var tasks = newItems.Select(i => RefreshMetadataForOwnedItem(i, true, options, cancellationToken));
 
-            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
 
-            LocalTrailerIds = newItemIds;
+            item.LocalTrailerIds = newItemIds;
 
-            return itemsChanged || results.Contains(true);
+            return itemsChanged;
         }
-        
-        private async Task<bool> RefreshThemeVideos(CancellationToken cancellationToken, bool forceSave = false, bool forceRefresh = false, bool allowSlowProviders = true)
+
+        private async Task<bool> RefreshThemeVideos(BaseItem item, MetadataRefreshOptions options, IEnumerable<FileSystemMetadata> fileSystemChildren, CancellationToken cancellationToken)
         {
-            var newThemeVideos = LoadThemeVideos().ToList();
+            var newThemeVideos = LoadThemeVideos(fileSystemChildren, options.DirectoryService).ToList();
+
             var newThemeVideoIds = newThemeVideos.Select(i => i.Id).ToList();
 
-            var themeVideosChanged = !ThemeVideoIds.SequenceEqual(newThemeVideoIds);
+            var themeVideosChanged = !item.ThemeVideoIds.SequenceEqual(newThemeVideoIds);
 
-            var tasks = newThemeVideos.Select(i => i.RefreshMetadata(cancellationToken, forceSave, forceRefresh, allowSlowProviders));
+            var tasks = newThemeVideos.Select(i =>
+            {
+                var subOptions = new MetadataRefreshOptions(options);
 
-            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+                if (!i.IsThemeMedia)
+                {
+                    i.ExtraType = MediaBrowser.Model.Entities.ExtraType.ThemeVideo;
+                    subOptions.ForceSave = true;
+                }
 
-            ThemeVideoIds = newThemeVideoIds;
+                return RefreshMetadataForOwnedItem(i, true, subOptions, cancellationToken);
+            });
 
-            return themeVideosChanged || results.Contains(true);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+
+            item.ThemeVideoIds = newThemeVideoIds;
+
+            return themeVideosChanged;
         }
-        
+
         /// <summary>
         /// Refreshes the theme songs.
         /// </summary>
-        private async Task<bool> RefreshThemeSongs(CancellationToken cancellationToken, bool forceSave = false, bool forceRefresh = false, bool allowSlowProviders = true)
+        private async Task<bool> RefreshThemeSongs(BaseItem item, MetadataRefreshOptions options, List<FileSystemMetadata> fileSystemChildren, CancellationToken cancellationToken)
         {
-            var newThemeSongs = LoadThemeSongs().ToList();
+            var newThemeSongs = LoadThemeSongs(fileSystemChildren, options.DirectoryService).ToList();
             var newThemeSongIds = newThemeSongs.Select(i => i.Id).ToList();
 
-            var themeSongsChanged = !ThemeSongIds.SequenceEqual(newThemeSongIds);
+            var themeSongsChanged = !item.ThemeSongIds.SequenceEqual(newThemeSongIds);
 
-            var tasks = newThemeSongs.Select(i => i.RefreshMetadata(cancellationToken, forceSave, forceRefresh, allowSlowProviders));
+            var tasks = newThemeSongs.Select(i =>
+            {
+                var subOptions = new MetadataRefreshOptions(options);
 
-            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+                if (!i.IsThemeMedia)
+                {
+                    i.ExtraType = MediaBrowser.Model.Entities.ExtraType.ThemeSong;
+                    subOptions.ForceSave = true;
+                }
 
-            ThemeSongIds = newThemeSongIds;
+                return RefreshMetadataForOwnedItem(i, true, subOptions, cancellationToken);
+            });
 
-            return themeSongsChanged || results.Contains(true);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+
+            item.ThemeSongIds = newThemeSongIds;
+
+            return themeSongsChanged;
         }
-
-        /// <summary>
-        /// Clear out all metadata properties. Extend for sub-classes.
-        /// </summary>
-        public virtual void ClearMetaValues()
-        {
-            Images.Clear();
-            ForcedSortName = null;
-            PremiereDate = null;
-            BackdropImagePaths.Clear();
-            OfficialRating = null;
-            CustomRating = null;
-            Overview = null;
-            Taglines.Clear();
-            Language = null;
-            Studios.Clear();
-            Genres.Clear();
-            CommunityRating = null;
-            RunTimeTicks = null;
-            AspectRatio = null;
-            ProductionYear = null;
-            ProviderIds.Clear();
-            DisplayMediaType = GetType().Name;
-            ResolveArgs = null;
-        }
-
-        /// <summary>
-        /// Gets or sets the trailer URL.
-        /// </summary>
-        /// <value>The trailer URL.</value>
-        public List<string> TrailerUrls { get; set; }
 
         /// <summary>
         /// Gets or sets the provider ids.
@@ -1036,45 +1254,151 @@ namespace MediaBrowser.Controller.Entities
         /// <value>The provider ids.</value>
         public Dictionary<string, string> ProviderIds { get; set; }
 
-        /// <summary>
-        /// Override this to false if class should be ignored for indexing purposes
-        /// </summary>
-        /// <value><c>true</c> if [include in index]; otherwise, <c>false</c>.</value>
         [IgnoreDataMember]
-        public virtual bool IncludeInIndex
-        {
-            get { return true; }
-        }
-
-        /// <summary>
-        /// Override this to true if class should be grouped under a container in indicies
-        /// The container class should be defined via IndexContainer
-        /// </summary>
-        /// <value><c>true</c> if [group in index]; otherwise, <c>false</c>.</value>
-        [IgnoreDataMember]
-        public virtual bool GroupInIndex
-        {
-            get { return false; }
-        }
-
-        /// <summary>
-        /// Override this to return the folder that should be used to construct a container
-        /// for this item in an index.  GroupInIndex should be true as well.
-        /// </summary>
-        /// <value>The index container.</value>
-        [IgnoreDataMember]
-        public virtual Folder IndexContainer
+        public virtual Folder LatestItemsIndexContainer
         {
             get { return null; }
         }
 
+        public virtual double? GetDefaultPrimaryImageAspectRatio()
+        {
+            return null;
+        }
+
+        public virtual string CreatePresentationUniqueKey()
+        {
+            return Id.ToString("N");
+        }
+
+        [IgnoreDataMember]
+        public string PresentationUniqueKey { get; set; }
+
+        public string GetPresentationUniqueKey()
+        {
+            return PresentationUniqueKey ?? CreatePresentationUniqueKey();
+        }
+
+        public virtual bool RequiresRefresh()
+        {
+            return false;
+        }
+
+        public virtual List<string> GetUserDataKeys()
+        {
+            var list = new List<string>();
+
+            if (SourceType == SourceType.Channel)
+            {
+                if (!string.IsNullOrWhiteSpace(ExternalId))
+                {
+                    list.Add(ExternalId);
+                }
+            }
+
+            list.Add(Id.ToString());
+            return list;
+        }
+
+        internal virtual bool IsValidFromResolver(BaseItem newItem)
+        {
+            var current = this;
+
+            if (!SupportsIsInMixedFolderDetection)
+            {
+                if (current.IsInMixedFolder != newItem.IsInMixedFolder)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public void AfterMetadataRefresh()
+        {
+            _sortName = null;
+        }
+
         /// <summary>
-        /// Gets the user data key.
+        /// Gets the preferred metadata language.
         /// </summary>
         /// <returns>System.String.</returns>
-        public virtual string GetUserDataKey()
+        public string GetPreferredMetadataLanguage()
         {
-            return Id.ToString();
+            string lang = PreferredMetadataLanguage;
+
+            if (string.IsNullOrWhiteSpace(lang))
+            {
+                lang = GetParents()
+                    .Select(i => i.PreferredMetadataLanguage)
+                    .FirstOrDefault(i => !string.IsNullOrWhiteSpace(i));
+            }
+
+            if (string.IsNullOrWhiteSpace(lang))
+            {
+                lang = LibraryManager.GetCollectionFolders(this)
+                    .Select(i => i.PreferredMetadataLanguage)
+                    .FirstOrDefault(i => !string.IsNullOrWhiteSpace(i));
+            }
+
+            if (string.IsNullOrWhiteSpace(lang))
+            {
+                lang = LibraryManager.GetLibraryOptions(this).PreferredMetadataLanguage;
+            }
+
+            if (string.IsNullOrWhiteSpace(lang))
+            {
+                lang = ConfigurationManager.Configuration.PreferredMetadataLanguage;
+            }
+
+            return lang;
+        }
+
+        /// <summary>
+        /// Gets the preferred metadata language.
+        /// </summary>
+        /// <returns>System.String.</returns>
+        public string GetPreferredMetadataCountryCode()
+        {
+            string lang = PreferredMetadataCountryCode;
+
+            if (string.IsNullOrWhiteSpace(lang))
+            {
+                lang = GetParents()
+                    .Select(i => i.PreferredMetadataCountryCode)
+                    .FirstOrDefault(i => !string.IsNullOrWhiteSpace(i));
+            }
+
+            if (string.IsNullOrWhiteSpace(lang))
+            {
+                lang = LibraryManager.GetCollectionFolders(this)
+                    .Select(i => i.PreferredMetadataCountryCode)
+                    .FirstOrDefault(i => !string.IsNullOrWhiteSpace(i));
+            }
+
+            if (string.IsNullOrWhiteSpace(lang))
+            {
+                lang = LibraryManager.GetLibraryOptions(this).MetadataCountryCode;
+            }
+
+            if (string.IsNullOrWhiteSpace(lang))
+            {
+                lang = ConfigurationManager.Configuration.MetadataCountryCode;
+            }
+
+            return lang;
+        }
+
+        public virtual bool IsSaveLocalMetadataEnabled()
+        {
+            if (SourceType == SourceType.Channel)
+            {
+                return false;
+            }
+
+            var libraryOptions = LibraryManager.GetLibraryOptions(this);
+
+            return libraryOptions.SaveLocalMetadata;
         }
 
         /// <summary>
@@ -1082,7 +1406,7 @@ namespace MediaBrowser.Controller.Entities
         /// </summary>
         /// <param name="user">The user.</param>
         /// <returns><c>true</c> if [is parental allowed] [the specified user]; otherwise, <c>false</c>.</returns>
-        /// <exception cref="System.ArgumentNullException"></exception>
+        /// <exception cref="System.ArgumentNullException">user</exception>
         public bool IsParentalAllowed(User user)
         {
             if (user == null)
@@ -1090,17 +1414,140 @@ namespace MediaBrowser.Controller.Entities
                 throw new ArgumentNullException("user");
             }
 
-            if (user.Configuration.MaxParentalRating == null)
-            {
-                return true;
-            }
-
-            if (user.Configuration.BlockNotRated && string.IsNullOrEmpty(CustomRating ?? OfficialRating))
+            if (!IsVisibleViaTags(user))
             {
                 return false;
             }
 
-            return Ratings.Level(CustomRating ?? OfficialRating) <= user.Configuration.MaxParentalRating.Value;
+            var maxAllowedRating = user.Policy.MaxParentalRating;
+
+            if (maxAllowedRating == null)
+            {
+                return true;
+            }
+
+            var rating = CustomRatingForComparison;
+
+            if (string.IsNullOrWhiteSpace(rating))
+            {
+                rating = OfficialRatingForComparison;
+            }
+
+            if (string.IsNullOrWhiteSpace(rating))
+            {
+                return !GetBlockUnratedValue(user.Policy);
+            }
+
+            var value = LocalizationManager.GetRatingLevel(rating);
+
+            // Could not determine the integer value
+            if (!value.HasValue)
+            {
+                var isAllowed = !GetBlockUnratedValue(user.Policy);
+
+                if (!isAllowed)
+                {
+                    Logger.Debug("{0} has an unrecognized parental rating of {1}.", Name, rating);
+                }
+
+                return isAllowed;
+            }
+
+            return value.Value <= maxAllowedRating.Value;
+        }
+
+        public int? GetParentalRatingValue()
+        {
+            var rating = CustomRating;
+
+            if (string.IsNullOrWhiteSpace(rating))
+            {
+                rating = OfficialRating;
+            }
+
+            if (string.IsNullOrWhiteSpace(rating))
+            {
+                return null;
+            }
+
+            return LocalizationManager.GetRatingLevel(rating);
+        }
+
+        public int? GetInheritedParentalRatingValue()
+        {
+            var rating = CustomRatingForComparison;
+
+            if (string.IsNullOrWhiteSpace(rating))
+            {
+                rating = OfficialRatingForComparison;
+            }
+
+            if (string.IsNullOrWhiteSpace(rating))
+            {
+                return null;
+            }
+
+            return LocalizationManager.GetRatingLevel(rating);
+        }
+
+        public List<string> GetInheritedTags()
+        {
+            var list = new List<string>();
+            list.AddRange(Tags);
+
+            foreach (var parent in GetParents())
+            {
+                list.AddRange(parent.Tags);
+            }
+
+            return list.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        private bool IsVisibleViaTags(User user)
+        {
+            var policy = user.Policy;
+            if (policy.BlockedTags.Any(i => Tags.Contains(i, StringComparer.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        protected virtual bool IsAllowTagFilterEnforced()
+        {
+            return true;
+        }
+
+        public virtual UnratedItem GetBlockUnratedType()
+        {
+            if (SourceType == SourceType.Channel)
+            {
+                return UnratedItem.ChannelContent;
+            }
+
+            return UnratedItem.Other;
+        }
+
+        /// <summary>
+        /// Gets the block unrated value.
+        /// </summary>
+        /// <param name="config">The configuration.</param>
+        /// <returns><c>true</c> if XXXX, <c>false</c> otherwise.</returns>
+        protected virtual bool GetBlockUnratedValue(UserPolicy config)
+        {
+            // Don't block plain folders that are unrated. Let the media underneath get blocked
+            // Special folders like series and albums will override this method.
+            if (IsFolder)
+            {
+                return false;
+            }
+            if (this is IItemByName)
+            {
+                return false;
+            }
+
+            return config.BlockUnratedItems.Contains(GetBlockUnratedType());
         }
 
         /// <summary>
@@ -1120,28 +1567,56 @@ namespace MediaBrowser.Controller.Entities
             return IsParentalAllowed(user);
         }
 
-        /// <summary>
-        /// Finds the particular item by searching through our parents and, if not found there, loading from repo
-        /// </summary>
-        /// <param name="id">The id.</param>
-        /// <returns>BaseItem.</returns>
-        /// <exception cref="System.ArgumentException"></exception>
-        protected BaseItem FindParentItem(Guid id)
+        public virtual bool IsVisibleStandalone(User user)
         {
-            if (id == Guid.Empty)
+            if (SourceType == SourceType.Channel)
             {
-                throw new ArgumentException();
+                return IsVisibleStandaloneInternal(user, false) && Channel.IsChannelVisible(this, user);
             }
 
-            var parent = Parent;
-            while (parent != null && !parent.IsRoot)
+            return IsVisibleStandaloneInternal(user, true);
+        }
+
+        [IgnoreDataMember]
+        public virtual bool SupportsInheritedParentImages
+        {
+            get { return false; }
+        }
+
+        protected bool IsVisibleStandaloneInternal(User user, bool checkFolders)
+        {
+            if (!IsVisible(user))
             {
-                if (parent.Id == id) return parent;
-                parent = parent.Parent;
+                return false;
             }
 
-            //not found - load from repo
-            return LibraryManager.RetrieveItem(id);
+            if (GetParents().Any(i => !i.IsVisible(user)))
+            {
+                return false;
+            }
+
+            if (checkFolders)
+            {
+                var topParent = GetParents().LastOrDefault() ?? this;
+
+                if (string.IsNullOrWhiteSpace(topParent.Path))
+                {
+                    return true;
+                }
+
+                var itemCollectionFolders = LibraryManager.GetCollectionFolders(this).Select(i => i.Id).ToList();
+
+                if (itemCollectionFolders.Count > 0)
+                {
+                    var userCollectionFolders = user.RootFolder.GetChildren(user, true).Select(i => i.Id).ToList();
+                    if (!itemCollectionFolders.Any(userCollectionFolders.Contains))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -1157,88 +1632,88 @@ namespace MediaBrowser.Controller.Entities
             }
         }
 
-        /// <summary>
-        /// Determine if we have changed vs the passed in copy
-        /// </summary>
-        /// <param name="copy">The copy.</param>
-        /// <returns><c>true</c> if the specified copy has changed; otherwise, <c>false</c>.</returns>
-        /// <exception cref="System.ArgumentNullException"></exception>
-        public virtual bool HasChanged(BaseItem copy)
+        [IgnoreDataMember]
+        public virtual bool IsDisplayedAsFolder
         {
-            if (copy == null)
+            get
             {
-                throw new ArgumentNullException();
+                return false;
+            }
+        }
+
+        public virtual string GetClientTypeName()
+        {
+            if (IsFolder && SourceType == SourceType.Channel && !(this is Channel))
+            {
+                return "ChannelFolderItem";
             }
 
-            var changed = copy.DateModified != DateModified;
-            if (changed)
-            {
-                Logger.Debug(Name + " changed - original creation: " + DateCreated + " new creation: " + copy.DateCreated + " original modified: " + DateModified + " new modified: " + copy.DateModified);
-            }
-            return changed;
+            return GetType().Name;
         }
 
         /// <summary>
-        /// Determines if the item is considered new based on user settings
+        /// Gets the linked child.
         /// </summary>
-        /// <returns><c>true</c> if [is recently added] [the specified user]; otherwise, <c>false</c>.</returns>
-        /// <exception cref="System.ArgumentNullException"></exception>
-        public bool IsRecentlyAdded()
+        /// <param name="info">The info.</param>
+        /// <returns>BaseItem.</returns>
+        protected BaseItem GetLinkedChild(LinkedChild info)
         {
-            return (DateTime.UtcNow - DateCreated).TotalDays < ConfigurationManager.Configuration.RecentItemDays;
-        }
-
-        /// <summary>
-        /// Adds a person to the item
-        /// </summary>
-        /// <param name="person">The person.</param>
-        /// <exception cref="System.ArgumentNullException"></exception>
-        public void AddPerson(PersonInfo person)
-        {
-            if (person == null)
+            // First get using the cached Id
+            if (info.ItemId.HasValue)
             {
-                throw new ArgumentNullException("person");
-            }
-
-            if (string.IsNullOrWhiteSpace(person.Name))
-            {
-                throw new ArgumentNullException();
-            }
-
-            // If the type is GuestStar and there's already an Actor entry, then update it to avoid dupes
-            if (string.Equals(person.Type, PersonType.GuestStar, StringComparison.OrdinalIgnoreCase))
-            {
-                var existing = People.FirstOrDefault(p => p.Name.Equals(person.Name, StringComparison.OrdinalIgnoreCase) && p.Type.Equals(PersonType.Actor, StringComparison.OrdinalIgnoreCase));
-
-                if (existing != null)
+                if (info.ItemId.Value == Guid.Empty)
                 {
-                    existing.Type = PersonType.GuestStar;
-                    return;
+                    return null;
+                }
+
+                var itemById = LibraryManager.GetItemById(info.ItemId.Value);
+
+                if (itemById != null)
+                {
+                    return itemById;
                 }
             }
 
-            if (string.Equals(person.Type, PersonType.Actor, StringComparison.OrdinalIgnoreCase))
+            var item = FindLinkedChild(info);
+
+            // If still null, log
+            if (item == null)
             {
-                // If the actor already exists without a role and we have one, fill it in
-                var existing = People.FirstOrDefault(p => p.Name.Equals(person.Name, StringComparison.OrdinalIgnoreCase) && (p.Type.Equals(PersonType.Actor, StringComparison.OrdinalIgnoreCase) || p.Type.Equals(PersonType.GuestStar, StringComparison.OrdinalIgnoreCase)));
-                if (existing == null)
-                {
-                    // Wasn't there - add it
-                    People.Add(person);
-                }
-                else
-                {
-                    // Was there, if no role and we have one - fill it in
-                    if (string.IsNullOrWhiteSpace(existing.Role) && !string.IsNullOrWhiteSpace(person.Role)) existing.Role = person.Role;
-                }
+                // Don't keep searching over and over
+                info.ItemId = Guid.Empty;
             }
             else
             {
-                // Check for dupes based on the combination of Name and Type
-                if (!People.Any(p => p.Name.Equals(person.Name, StringComparison.OrdinalIgnoreCase) && p.Type.Equals(person.Type, StringComparison.OrdinalIgnoreCase)))
+                // Cache the id for next time
+                info.ItemId = item.Id;
+            }
+
+            return item;
+        }
+
+        private BaseItem FindLinkedChild(LinkedChild info)
+        {
+            if (!string.IsNullOrEmpty(info.Path))
+            {
+                var itemByPath = LibraryManager.FindByPath(info.Path, null);
+
+                if (itemByPath == null)
                 {
-                    People.Add(person);
+                    //Logger.Warn("Unable to find linked item at path {0}", info.Path);
                 }
+
+                return itemByPath;
+            }
+
+            return null;
+        }
+
+        [IgnoreDataMember]
+        public virtual bool EnableRememberingTrackSelections
+        {
+            get
+            {
+                return true;
             }
         }
 
@@ -1261,47 +1736,6 @@ namespace MediaBrowser.Controller.Entities
         }
 
         /// <summary>
-        /// Adds a tagline to the item
-        /// </summary>
-        /// <param name="name">The name.</param>
-        /// <exception cref="System.ArgumentNullException"></exception>
-        public void AddTagline(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                throw new ArgumentNullException("name");
-            }
-
-            if (!Taglines.Contains(name, StringComparer.OrdinalIgnoreCase))
-            {
-                Taglines.Add(name);
-            }
-        }
-
-        /// <summary>
-        /// Adds a TrailerUrl to the item
-        /// </summary>
-        /// <param name="url">The URL.</param>
-        /// <exception cref="System.ArgumentNullException"></exception>
-        public void AddTrailerUrl(string url)
-        {
-            if (string.IsNullOrWhiteSpace(url))
-            {
-                throw new ArgumentNullException("url");
-            }
-
-            if (TrailerUrls == null)
-            {
-                TrailerUrls = new List<string>();
-            }
-
-            if (!TrailerUrls.Contains(url, StringComparer.OrdinalIgnoreCase))
-            {
-                TrailerUrls.Add(url);
-            }
-        }
-
-        /// <summary>
         /// Adds a genre to the item
         /// </summary>
         /// <param name="name">The name.</param>
@@ -1320,69 +1754,68 @@ namespace MediaBrowser.Controller.Entities
         }
 
         /// <summary>
-        /// Adds the production location.
-        /// </summary>
-        /// <param name="location">The location.</param>
-        /// <exception cref="System.ArgumentNullException">location</exception>
-        public void AddProductionLocation(string location)
-        {
-            if (string.IsNullOrWhiteSpace(location))
-            {
-                throw new ArgumentNullException("location");
-            }
-
-            if (ProductionLocations == null)
-            {
-                ProductionLocations = new List<string>();
-            }
-
-            if (!ProductionLocations.Contains(location, StringComparer.OrdinalIgnoreCase))
-            {
-                ProductionLocations.Add(location);
-            }
-        }
-
-        /// <summary>
-        /// Marks the item as either played or unplayed
+        /// Marks the played.
         /// </summary>
         /// <param name="user">The user.</param>
-        /// <param name="wasPlayed">if set to <c>true</c> [was played].</param>
-        /// <param name="userManager">The user manager.</param>
+        /// <param name="datePlayed">The date played.</param>
+        /// <param name="resetPosition">if set to <c>true</c> [reset position].</param>
         /// <returns>Task.</returns>
         /// <exception cref="System.ArgumentNullException"></exception>
-        public virtual async Task SetPlayedStatus(User user, bool wasPlayed, IUserDataRepository userManager)
+        public virtual async Task MarkPlayed(User user,
+            DateTime? datePlayed,
+            bool resetPosition)
         {
             if (user == null)
             {
                 throw new ArgumentNullException();
             }
 
-            var key = GetUserDataKey();
+            var data = UserDataManager.GetUserData(user, this);
 
-            var data = await userManager.GetUserData(user.Id, key).ConfigureAwait(false);
-
-            if (wasPlayed)
+            if (datePlayed.HasValue)
             {
-                data.PlayCount = Math.Max(data.PlayCount, 1);
-
-                if (!data.LastPlayedDate.HasValue)
-                {
-                    data.LastPlayedDate = DateTime.UtcNow;
-                }
+                // Increment
+                data.PlayCount++;
             }
-            else
+
+            // Ensure it's at least one
+            data.PlayCount = Math.Max(data.PlayCount, 1);
+
+            if (resetPosition)
             {
-                //I think it is okay to do this here.
-                // if this is only called when a user is manually forcing something to un-played
-                // then it probably is what we want to do...
-                data.PlayCount = 0;
                 data.PlaybackPositionTicks = 0;
-                data.LastPlayedDate = null;
             }
 
-            data.Played = wasPlayed;
+            data.LastPlayedDate = datePlayed ?? data.LastPlayedDate ?? DateTime.UtcNow;
+            data.Played = true;
 
-            await userManager.SaveUserData(user.Id, key, data, CancellationToken.None).ConfigureAwait(false);
+            await UserDataManager.SaveUserData(user.Id, this, data, UserDataSaveReason.TogglePlayed, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Marks the unplayed.
+        /// </summary>
+        /// <param name="user">The user.</param>
+        /// <returns>Task.</returns>
+        /// <exception cref="System.ArgumentNullException"></exception>
+        public virtual async Task MarkUnplayed(User user)
+        {
+            if (user == null)
+            {
+                throw new ArgumentNullException();
+            }
+
+            var data = UserDataManager.GetUserData(user, this);
+
+            //I think it is okay to do this here.
+            // if this is only called when a user is manually forcing something to un-played
+            // then it probably is what we want to do...
+            data.PlayCount = 0;
+            data.PlaybackPositionTicks = 0;
+            data.LastPlayedDate = null;
+            data.Played = false;
+
+            await UserDataManager.SaveUserData(user.Id, this, data, UserDataSaveReason.TogglePlayed, CancellationToken.None).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1391,113 +1824,59 @@ namespace MediaBrowser.Controller.Entities
         /// <returns>Task.</returns>
         public virtual Task ChangedExternally()
         {
-            return RefreshMetadata(CancellationToken.None);
-        }
-
-        /// <summary>
-        /// Finds a parent of a given type
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <returns>``0.</returns>
-        public T FindParent<T>()
-            where T : Folder
-        {
-            var parent = Parent;
-
-            while (parent != null)
-            {
-                var result = parent as T;
-                if (result != null)
-                {
-                    return result;
-                }
-
-                parent = parent.Parent;
-            }
-
-            return null;
+            ProviderManager.QueueRefresh(Id, new MetadataRefreshOptions(FileSystem));
+            return Task.FromResult(true);
         }
 
         /// <summary>
         /// Gets an image
         /// </summary>
         /// <param name="type">The type.</param>
-        /// <returns>System.String.</returns>
-        /// <exception cref="System.ArgumentException">Backdrops should be accessed using Item.Backdrops</exception>
-        public string GetImage(ImageType type)
-        {
-            if (type == ImageType.Backdrop)
-            {
-                throw new ArgumentException("Backdrops should be accessed using Item.Backdrops");
-            }
-            if (type == ImageType.Screenshot)
-            {
-                throw new ArgumentException("Screenshots should be accessed using Item.Screenshots");
-            }
-
-            if (Images == null)
-            {
-                return null;
-            }
-
-            string val;
-            Images.TryGetValue(type, out val);
-            return val;
-        }
-
-        /// <summary>
-        /// Gets an image
-        /// </summary>
-        /// <param name="type">The type.</param>
+        /// <param name="imageIndex">Index of the image.</param>
         /// <returns><c>true</c> if the specified type has image; otherwise, <c>false</c>.</returns>
         /// <exception cref="System.ArgumentException">Backdrops should be accessed using Item.Backdrops</exception>
-        public bool HasImage(ImageType type)
+        public bool HasImage(ImageType type, int imageIndex)
         {
-            if (type == ImageType.Backdrop)
-            {
-                throw new ArgumentException("Backdrops should be accessed using Item.Backdrops");
-            }
-            if (type == ImageType.Screenshot)
-            {
-                throw new ArgumentException("Screenshots should be accessed using Item.Screenshots");
-            }
-
-            return !string.IsNullOrEmpty(GetImage(type));
+            return GetImageInfo(type, imageIndex) != null;
         }
 
-        /// <summary>
-        /// Sets an image
-        /// </summary>
-        /// <param name="type">The type.</param>
-        /// <param name="path">The path.</param>
-        /// <exception cref="System.ArgumentException">Backdrops should be accessed using Item.Backdrops</exception>
-        public void SetImage(ImageType type, string path)
+        public void SetImage(ItemImageInfo image, int index)
         {
-            if (type == ImageType.Backdrop)
+            if (image.Type == ImageType.Chapter)
             {
-                throw new ArgumentException("Backdrops should be accessed using Item.Backdrops");
-            }
-            if (type == ImageType.Screenshot)
-            {
-                throw new ArgumentException("Screenshots should be accessed using Item.Screenshots");
+                throw new ArgumentException("Cannot set chapter images using SetImagePath");
             }
 
-            var typeKey = type;
+            var existingImage = GetImageInfo(image.Type, index);
 
-            // If it's null remove the key from the dictionary
-            if (string.IsNullOrEmpty(path))
+            if (existingImage != null)
             {
-                if (Images != null)
-                {
-                    if (Images.ContainsKey(typeKey))
-                    {
-                        Images.Remove(typeKey);
-                    }
-                }
+                ImageInfos.Remove(existingImage);
+            }
+
+            ImageInfos.Add(image);
+        }
+
+        public void SetImagePath(ImageType type, int index, FileSystemMetadata file)
+        {
+            if (type == ImageType.Chapter)
+            {
+                throw new ArgumentException("Cannot set chapter images using SetImagePath");
+            }
+
+            var image = GetImageInfo(type, index);
+
+            if (image == null)
+            {
+                ImageInfos.Add(GetImageInfo(file, type));
             }
             else
             {
-                Images[typeKey] = path;
+                var imageInfo = GetImageInfo(file, type);
+
+                image.Path = file.FullName;
+                image.DateModified = imageInfo.DateModified;
+                image.IsPlaceholder = false;
             }
         }
 
@@ -1507,47 +1886,559 @@ namespace MediaBrowser.Controller.Entities
         /// <param name="type">The type.</param>
         /// <param name="index">The index.</param>
         /// <returns>Task.</returns>
-        public Task DeleteImage(ImageType type, int? index)
+        public Task DeleteImage(ImageType type, int index)
         {
-            if (type == ImageType.Backdrop)
+            var info = GetImageInfo(type, index);
+
+            if (info == null)
             {
-                if (!index.HasValue)
+                // Nothing to do
+                return Task.FromResult(true);
+            }
+
+            // Remove it from the item
+            RemoveImage(info);
+
+            if (info.IsLocalFile)
+            {
+                FileSystem.DeleteFile(info.Path);
+            }
+
+            return UpdateToRepository(ItemUpdateType.ImageUpdate, CancellationToken.None);
+        }
+
+        public void RemoveImage(ItemImageInfo image)
+        {
+            ImageInfos.Remove(image);
+        }
+
+        public virtual Task UpdateToRepository(ItemUpdateType updateReason, CancellationToken cancellationToken)
+        {
+            return LibraryManager.UpdateItem(this, updateReason, cancellationToken);
+        }
+
+        /// <summary>
+        /// Validates that images within the item are still on the file system
+        /// </summary>
+        public bool ValidateImages(IDirectoryService directoryService)
+        {
+            var allFiles = ImageInfos
+                .Where(i => i.IsLocalFile)
+                .Select(i => System.IO.Path.GetDirectoryName(i.Path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .SelectMany(directoryService.GetFiles)
+                .Select(i => i.FullName)
+                .ToList();
+
+            var deletedImages = ImageInfos
+                .Where(image => image.IsLocalFile && !allFiles.Contains(image.Path, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            if (deletedImages.Count > 0)
+            {
+                ImageInfos = ImageInfos.Except(deletedImages).ToList();
+            }
+
+            return deletedImages.Count > 0;
+        }
+
+        /// <summary>
+        /// Gets the image path.
+        /// </summary>
+        /// <param name="imageType">Type of the image.</param>
+        /// <param name="imageIndex">Index of the image.</param>
+        /// <returns>System.String.</returns>
+        /// <exception cref="System.InvalidOperationException">
+        /// </exception>
+        /// <exception cref="System.ArgumentNullException">item</exception>
+        public string GetImagePath(ImageType imageType, int imageIndex)
+        {
+            var info = GetImageInfo(imageType, imageIndex);
+
+            return info == null ? null : info.Path;
+        }
+
+        /// <summary>
+        /// Gets the image information.
+        /// </summary>
+        /// <param name="imageType">Type of the image.</param>
+        /// <param name="imageIndex">Index of the image.</param>
+        /// <returns>ItemImageInfo.</returns>
+        public ItemImageInfo GetImageInfo(ImageType imageType, int imageIndex)
+        {
+            if (imageType == ImageType.Chapter)
+            {
+                var chapter = ItemRepository.GetChapter(Id, imageIndex);
+
+                if (chapter == null)
                 {
-                    throw new ArgumentException("Please specify a backdrop image index to delete.");
+                    return null;
                 }
 
-                var file = BackdropImagePaths[index.Value];
+                var path = chapter.ImagePath;
 
-                BackdropImagePaths.Remove(file);
-
-                // Delete the source file
-                File.Delete(file);
-            }
-            else if (type == ImageType.Screenshot)
-            {
-                if (!index.HasValue)
+                if (string.IsNullOrWhiteSpace(path))
                 {
-                    throw new ArgumentException("Please specify a screenshot image index to delete.");
+                    return null;
                 }
 
-                var file = ScreenshotImagePaths[index.Value];
-
-                ScreenshotImagePaths.Remove(file);
-
-                // Delete the source file
-                File.Delete(file);
+                return new ItemImageInfo
+                {
+                    Path = path,
+                    DateModified = chapter.ImageDateModified,
+                    Type = imageType
+                };
             }
-            else
+
+            return GetImages(imageType)
+                .ElementAtOrDefault(imageIndex);
+        }
+
+        public IEnumerable<ItemImageInfo> GetImages(ImageType imageType)
+        {
+            if (imageType == ImageType.Chapter)
             {
-                // Delete the source file
-                File.Delete(GetImage(type));
-
-                // Remove it from the item
-                SetImage(type, null);
+                throw new ArgumentException("No image info for chapter images");
             }
 
-            // Refresh metadata
-            return RefreshMetadata(CancellationToken.None, forceSave: true);
+            return ImageInfos.Where(i => i.Type == imageType);
+        }
+
+        /// <summary>
+        /// Adds the images.
+        /// </summary>
+        /// <param name="imageType">Type of the image.</param>
+        /// <param name="images">The images.</param>
+        /// <returns><c>true</c> if XXXX, <c>false</c> otherwise.</returns>
+        /// <exception cref="System.ArgumentException">Cannot call AddImages with chapter images</exception>
+        public bool AddImages(ImageType imageType, List<FileSystemMetadata> images)
+        {
+            if (imageType == ImageType.Chapter)
+            {
+                throw new ArgumentException("Cannot call AddImages with chapter images");
+            }
+
+            var existingImages = GetImages(imageType)
+                .ToList();
+
+            var newImageList = new List<FileSystemMetadata>();
+            var imageAdded = false;
+
+            foreach (var newImage in images)
+            {
+                if (newImage == null)
+                {
+                    throw new ArgumentException("null image found in list");
+                }
+
+                var existing = existingImages
+                    .FirstOrDefault(i => string.Equals(i.Path, newImage.FullName, StringComparison.OrdinalIgnoreCase));
+
+                if (existing == null)
+                {
+                    newImageList.Add(newImage);
+                    imageAdded = true;
+                }
+                else
+                {
+                    if (existing.IsLocalFile)
+                    {
+                        existing.DateModified = FileSystem.GetLastWriteTimeUtc(newImage);
+                    }
+                }
+            }
+
+            if (imageAdded || images.Count != existingImages.Count)
+            {
+                var newImagePaths = images.Select(i => i.FullName).ToList();
+
+                var deleted = existingImages
+                    .Where(i => i.IsLocalFile && !newImagePaths.Contains(i.Path, StringComparer.OrdinalIgnoreCase) && !FileSystem.FileExists(i.Path))
+                    .ToList();
+
+                ImageInfos = ImageInfos.Except(deleted).ToList();
+            }
+
+            ImageInfos.AddRange(newImageList.Select(i => GetImageInfo(i, imageType)));
+
+            return newImageList.Count > 0;
+        }
+
+        private ItemImageInfo GetImageInfo(FileSystemMetadata file, ImageType type)
+        {
+            return new ItemImageInfo
+            {
+                Path = file.FullName,
+                Type = type,
+                DateModified = FileSystem.GetLastWriteTimeUtc(file)
+            };
+        }
+
+        /// <summary>
+        /// Gets the file system path to delete when the item is to be deleted
+        /// </summary>
+        /// <returns></returns>
+        public virtual IEnumerable<FileSystemMetadata> GetDeletePaths()
+        {
+            return new[] {
+                new FileSystemMetadata
+                {
+                    FullName = Path,
+                    IsDirectory = IsFolder
+                }
+            }.Concat(GetLocalMetadataFilesToDelete());
+        }
+
+        protected List<FileSystemMetadata> GetLocalMetadataFilesToDelete()
+        {
+            if (IsFolder || !IsInMixedFolder)
+            {
+                return new List<FileSystemMetadata>();
+            }
+
+            var filename = System.IO.Path.GetFileNameWithoutExtension(Path);
+            var extensions = new[] { ".nfo", ".xml", ".srt" }.ToList();
+            extensions.AddRange(SupportedImageExtensionsList);
+
+            return FileSystem.GetFiles(System.IO.Path.GetDirectoryName(Path))
+                .Where(i => extensions.Contains(i.Extension, StringComparer.OrdinalIgnoreCase) && System.IO.Path.GetFileNameWithoutExtension(i.FullName).StartsWith(filename, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        public bool AllowsMultipleImages(ImageType type)
+        {
+            return type == ImageType.Backdrop || type == ImageType.Screenshot || type == ImageType.Chapter;
+        }
+
+        public Task SwapImages(ImageType type, int index1, int index2)
+        {
+            if (!AllowsMultipleImages(type))
+            {
+                throw new ArgumentException("The change index operation is only applicable to backdrops and screenshots");
+            }
+
+            var info1 = GetImageInfo(type, index1);
+            var info2 = GetImageInfo(type, index2);
+
+            if (info1 == null || info2 == null)
+            {
+                // Nothing to do
+                return Task.FromResult(true);
+            }
+
+            if (!info1.IsLocalFile || !info2.IsLocalFile)
+            {
+                // TODO: Not supported  yet
+                return Task.FromResult(true);
+            }
+
+            var path1 = info1.Path;
+            var path2 = info2.Path;
+
+            FileSystem.SwapFiles(path1, path2);
+
+            // Refresh these values
+            info1.DateModified = FileSystem.GetLastWriteTimeUtc(info1.Path);
+            info2.DateModified = FileSystem.GetLastWriteTimeUtc(info2.Path);
+
+            return UpdateToRepository(ItemUpdateType.ImageUpdate, CancellationToken.None);
+        }
+
+        public virtual bool IsPlayed(User user)
+        {
+            var userdata = UserDataManager.GetUserData(user, this);
+
+            return userdata != null && userdata.Played;
+        }
+
+        public bool IsFavoriteOrLiked(User user)
+        {
+            var userdata = UserDataManager.GetUserData(user, this);
+
+            return userdata != null && (userdata.IsFavorite || (userdata.Likes ?? false));
+        }
+
+        public virtual bool IsUnplayed(User user)
+        {
+            if (user == null)
+            {
+                throw new ArgumentNullException("user");
+            }
+
+            var userdata = UserDataManager.GetUserData(user, this);
+
+            return userdata == null || !userdata.Played;
+        }
+
+        ItemLookupInfo IHasLookupInfo<ItemLookupInfo>.GetLookupInfo()
+        {
+            return GetItemLookupInfo<ItemLookupInfo>();
+        }
+
+        protected T GetItemLookupInfo<T>()
+            where T : ItemLookupInfo, new()
+        {
+            return new T
+            {
+                MetadataCountryCode = GetPreferredMetadataCountryCode(),
+                MetadataLanguage = GetPreferredMetadataLanguage(),
+                Name = GetNameForMetadataLookup(),
+                ProviderIds = ProviderIds,
+                IndexNumber = IndexNumber,
+                ParentIndexNumber = ParentIndexNumber,
+                Year = ProductionYear,
+                PremiereDate = PremiereDate
+            };
+        }
+
+        protected virtual string GetNameForMetadataLookup()
+        {
+            return Name;
+        }
+
+        /// <summary>
+        /// This is called before any metadata refresh and returns true or false indicating if changes were made
+        /// </summary>
+        public virtual bool BeforeMetadataRefresh()
+        {
+            _sortName = null;
+
+            var hasChanges = false;
+
+            if (string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(Path))
+            {
+                Name = FileSystem.GetFileNameWithoutExtension(Path);
+                hasChanges = true;
+            }
+
+            return hasChanges;
+        }
+
+        protected static string GetMappedPath(BaseItem item, string path, LocationType locationType)
+        {
+            if (locationType == LocationType.FileSystem || locationType == LocationType.Offline)
+            {
+                return LibraryManager.GetPathAfterNetworkSubstitution(path, item);
+            }
+
+            return path;
+        }
+
+        public virtual Task FillUserDataDtoValues(UserItemDataDto dto, UserItemData userData, BaseItemDto itemDto, User user, List<ItemFields> itemFields)
+        {
+            if (RunTimeTicks.HasValue)
+            {
+                double pct = RunTimeTicks.Value;
+
+                if (pct > 0)
+                {
+                    pct = userData.PlaybackPositionTicks / pct;
+
+                    if (pct > 0)
+                    {
+                        dto.PlayedPercentage = 100 * pct;
+                    }
+                }
+            }
+
+            return Task.FromResult(true);
+        }
+
+        protected Task RefreshMetadataForOwnedItem(BaseItem ownedItem, bool copyTitleMetadata, MetadataRefreshOptions options, CancellationToken cancellationToken)
+        {
+            var newOptions = new MetadataRefreshOptions(options);
+            newOptions.SearchResult = null;
+
+            var item = this;
+
+            if (copyTitleMetadata)
+            {
+                // Take some data from the main item, for querying purposes
+                if (!item.Genres.SequenceEqual(ownedItem.Genres, StringComparer.Ordinal))
+                {
+                    newOptions.ForceSave = true;
+                    ownedItem.Genres = item.Genres.ToList();
+                }
+                if (!item.Studios.SequenceEqual(ownedItem.Studios, StringComparer.Ordinal))
+                {
+                    newOptions.ForceSave = true;
+                    ownedItem.Studios = item.Studios.ToList();
+                }
+                if (!item.ProductionLocations.SequenceEqual(ownedItem.ProductionLocations, StringComparer.Ordinal))
+                {
+                    newOptions.ForceSave = true;
+                    ownedItem.ProductionLocations = item.ProductionLocations.ToList();
+                }
+                if (!item.Keywords.SequenceEqual(ownedItem.Keywords, StringComparer.Ordinal))
+                {
+                    newOptions.ForceSave = true;
+                    ownedItem.Keywords = item.Keywords.ToList();
+                }
+                if (item.CommunityRating != ownedItem.CommunityRating)
+                {
+                    ownedItem.CommunityRating = item.CommunityRating;
+                    newOptions.ForceSave = true;
+                }
+                if (item.CriticRating != ownedItem.CriticRating)
+                {
+                    ownedItem.CriticRating = item.CriticRating;
+                    newOptions.ForceSave = true;
+                }
+                if (!string.Equals(item.Overview, ownedItem.Overview, StringComparison.Ordinal))
+                {
+                    ownedItem.Overview = item.Overview;
+                    newOptions.ForceSave = true;
+                }
+                if (!string.Equals(item.OfficialRating, ownedItem.OfficialRating, StringComparison.Ordinal))
+                {
+                    ownedItem.OfficialRating = item.OfficialRating;
+                    newOptions.ForceSave = true;
+                }
+                if (!string.Equals(item.CustomRating, ownedItem.CustomRating, StringComparison.Ordinal))
+                {
+                    ownedItem.CustomRating = item.CustomRating;
+                    newOptions.ForceSave = true;
+                }
+                if (!string.Equals(item.CriticRatingSummary, ownedItem.CriticRatingSummary, StringComparison.Ordinal))
+                {
+                    ownedItem.CriticRatingSummary = item.CriticRatingSummary;
+                    newOptions.ForceSave = true;
+                }
+                if (!string.Equals(item.OfficialRatingDescription, ownedItem.OfficialRatingDescription, StringComparison.Ordinal))
+                {
+                    ownedItem.OfficialRatingDescription = item.OfficialRatingDescription;
+                    newOptions.ForceSave = true;
+                }
+            }
+
+            return ownedItem.RefreshMetadata(newOptions, cancellationToken);
+        }
+
+        protected Task RefreshMetadataForOwnedVideo(MetadataRefreshOptions options, bool copyTitleMetadata, string path, CancellationToken cancellationToken)
+        {
+            var newOptions = new MetadataRefreshOptions(options);
+            newOptions.SearchResult = null;
+
+            var id = LibraryManager.GetNewItemId(path, typeof(Video));
+
+            // Try to retrieve it from the db. If we don't find it, use the resolved version
+            var video = LibraryManager.GetItemById(id) as Video;
+
+            if (video == null)
+            {
+                video = LibraryManager.ResolvePath(FileSystem.GetFileSystemInfo(path)) as Video;
+
+                newOptions.ForceSave = true;
+            }
+
+            if (video == null)
+            {
+                return Task.FromResult(true);
+            }
+
+            return RefreshMetadataForOwnedItem(video, copyTitleMetadata, newOptions, cancellationToken);
+        }
+
+        public string GetEtag(User user)
+        {
+            return string.Join("|", GetEtagValues(user).ToArray()).GetMD5().ToString("N");
+        }
+
+        protected virtual List<string> GetEtagValues(User user)
+        {
+            return new List<string>
+            {
+                DateLastSaved.Ticks.ToString(CultureInfo.InvariantCulture)
+            };
+        }
+
+        public virtual IEnumerable<Guid> GetAncestorIds()
+        {
+            return GetParents().Select(i => i.Id).Concat(LibraryManager.GetCollectionFolders(this).Select(i => i.Id));
+        }
+
+        public BaseItem GetTopParent()
+        {
+            if (IsTopParent)
+            {
+                return this;
+            }
+
+            return GetParents().FirstOrDefault(i => i.IsTopParent);
+        }
+
+        [IgnoreDataMember]
+        public virtual bool IsTopParent
+        {
+            get
+            {
+                if (this is BasePluginFolder || this is Channel)
+                {
+                    return true;
+                }
+
+                var view = this as UserView;
+                if (view != null)
+                {
+                    if (string.Equals(view.ViewType, CollectionType.LiveTv, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                    if (string.Equals(view.ViewType, CollectionType.Channels, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+
+                if (GetParent() is AggregateFolder)
+                {
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
+        [IgnoreDataMember]
+        public virtual bool SupportsAncestors
+        {
+            get
+            {
+                return true;
+            }
+        }
+
+        [IgnoreDataMember]
+        public virtual bool StopRefreshIfLocalMetadataFound
+        {
+            get
+            {
+                return true;
+            }
+        }
+
+        public virtual IEnumerable<Guid> GetIdsForAncestorQuery()
+        {
+            return new[] { Id };
+        }
+
+        public virtual Task Delete(DeleteOptions options)
+        {
+            return LibraryManager.DeleteItem(this, options);
+        }
+
+        public virtual Task OnFileDeleted()
+        {
+            // Remove from database
+            return Delete(new DeleteOptions
+            {
+                DeleteFileLocation = false
+            });
+        }
+
+        public virtual List<ExternalUrl> GetRelatedUrls()
+        {
+            return new List<ExternalUrl>();
         }
     }
 }

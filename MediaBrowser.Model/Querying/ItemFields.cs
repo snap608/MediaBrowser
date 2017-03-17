@@ -1,5 +1,4 @@
-﻿
-namespace MediaBrowser.Model.Querying
+﻿namespace MediaBrowser.Model.Querying
 {
     /// <summary>
     /// Used to control the data that gets attached to DtoBaseItems
@@ -7,19 +6,41 @@ namespace MediaBrowser.Model.Querying
     public enum ItemFields
     {
         /// <summary>
-        /// Audio properties
+        /// The air time
         /// </summary>
-        AudioInfo,
+        AirTime,
 
         /// <summary>
-        /// The budget
+        /// The alternate episode numbers
         /// </summary>
-        Budget,
+        AlternateEpisodeNumbers,
+
+        /// <summary>
+        /// The awards summary
+        /// </summary>
+        AwardSummary,
+
+        /// <summary>
+        /// The can delete
+        /// </summary>
+        CanDelete,
+
+        /// <summary>
+        /// The can download
+        /// </summary>
+        CanDownload,
+
+        /// <summary>
+        /// The channel information
+        /// </summary>
+        ChannelInfo,
 
         /// <summary>
         /// The chapters
         /// </summary>
         Chapters,
+
+        ChildCount,
 
         /// <summary>
         /// The critic rating summary
@@ -27,14 +48,24 @@ namespace MediaBrowser.Model.Querying
         CriticRatingSummary,
 
         /// <summary>
+        /// The cumulative run time ticks
+        /// </summary>
+        CumulativeRunTimeTicks,
+
+        /// <summary>
+        /// The custom rating
+        /// </summary>
+        CustomRating,
+        
+        /// <summary>
         /// The date created of the item
         /// </summary>
         DateCreated,
 
         /// <summary>
-        /// The display media type
+        /// The date last media added
         /// </summary>
-        DisplayMediaType,
+        DateLastMediaAdded,
 
         /// <summary>
         /// Item display preferences
@@ -42,9 +73,19 @@ namespace MediaBrowser.Model.Querying
         DisplayPreferencesId,
 
         /// <summary>
-        /// The end date
+        /// The display media type
         /// </summary>
-        EndDate,
+        DisplayMediaType,
+
+        /// <summary>
+        /// The etag
+        /// </summary>
+        Etag,
+
+        /// <summary>
+        /// The external urls
+        /// </summary>
+        ExternalUrls,
 
         /// <summary>
         /// Genres
@@ -57,30 +98,44 @@ namespace MediaBrowser.Model.Querying
         HomePageUrl,
 
         /// <summary>
-        /// Child count, recursive child count, etc
-        /// </summary>
-        ItemCounts,
-
-        /// <summary>
         /// The fields that the server supports indexing on
         /// </summary>
         IndexOptions,
 
         /// <summary>
-        /// The metadata settings
+        /// The item counts
         /// </summary>
-        MetadataSettings,
+        ItemCounts,
+
+        /// <summary>
+        /// The keywords
+        /// </summary>
+        Keywords,
+
+        /// <summary>
+        /// The media source count
+        /// </summary>
+        MediaSourceCount,
+
+        /// <summary>
+        /// The media versions
+        /// </summary>
+        MediaSources,
+
+        /// <summary>
+        /// The metascore
+        /// </summary>
+        Metascore,
+
+        OfficialRatingDescription,
+
+        OriginalTitle,
 
         /// <summary>
         /// The item overview
         /// </summary>
         Overview,
 
-        /// <summary>
-        /// The overview HTML
-        /// </summary>
-        OverviewHtml,
-        
         /// <summary>
         /// The id of the item's parent
         /// </summary>
@@ -95,6 +150,8 @@ namespace MediaBrowser.Model.Querying
         /// The list of people for the item
         /// </summary>
         People,
+
+        PlayAccess,
 
         /// <summary>
         /// The production locations
@@ -111,15 +168,34 @@ namespace MediaBrowser.Model.Querying
         /// </summary>
         PrimaryImageAspectRatio,
 
+        RecursiveItemCount,
+
         /// <summary>
-        /// The revenue
+        /// The season name
         /// </summary>
-        Revenue,
-        
+        SeasonName,
+
         /// <summary>
-        /// AirDays, status, SeriesName, etc
+        /// The settings
         /// </summary>
-        SeriesInfo,
+        Settings,
+
+        /// <summary>
+        /// The screenshot image tags
+        /// </summary>
+        ScreenshotImageTags,
+
+        /// <summary>
+        /// The series genres
+        /// </summary>
+        SeriesGenres,
+
+        SeriesPrimaryImage,
+
+        /// <summary>
+        /// The series studio
+        /// </summary>
+        SeriesStudio,
 
         /// <summary>
         /// The sort name of the item
@@ -127,9 +203,20 @@ namespace MediaBrowser.Model.Querying
         SortName,
 
         /// <summary>
+        /// The special episode numbers
+        /// </summary>
+        SpecialEpisodeNumbers,
+
+        /// <summary>
         /// The studios of the item
         /// </summary>
         Studios,
+
+        BasicSyncInfo,
+        /// <summary>
+        /// The synchronize information
+        /// </summary>
+        SyncInfo,
 
         /// <summary>
         /// The taglines of the item
@@ -140,20 +227,32 @@ namespace MediaBrowser.Model.Querying
         /// The tags
         /// </summary>
         Tags,
-        
+
+        /// <summary>
+        /// The vote count
+        /// </summary>
+        VoteCount,
+
         /// <summary>
         /// The trailer url of the item
         /// </summary>
-        TrailerUrls,
-
-        /// <summary>
-        /// The user data of the item
-        /// </summary>
-        UserData,
+        RemoteTrailers,
 
         /// <summary>
         /// The media streams
         /// </summary>
-        MediaStreams
+        MediaStreams,
+
+        /// <summary>
+        /// The season user data
+        /// </summary>
+        SeasonUserData,
+
+        /// <summary>
+        /// The service name
+        /// </summary>
+        ServiceName,
+        ThemeSongIds,
+        ThemeVideoIds
     }
 }

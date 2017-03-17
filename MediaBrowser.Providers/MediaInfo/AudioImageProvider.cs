@@ -1,210 +1,153 @@
-﻿using System.IO;
-using MediaBrowser.Common.IO;
-using MediaBrowser.Common.MediaInfo;
-using MediaBrowser.Controller;
+﻿using System;
+using MediaBrowser.Common.Extensions;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Audio;
-using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.Logging;
-using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Model.IO;
 
 namespace MediaBrowser.Providers.MediaInfo
 {
     /// <summary>
     /// Uses ffmpeg to create video images
     /// </summary>
-    public class AudioImageProvider : BaseMetadataProvider
+    public class AudioImageProvider : IDynamicImageProvider, IHasItemChangeMonitor
     {
-        /// <summary>
-        /// Gets or sets the image cache.
-        /// </summary>
-        /// <value>The image cache.</value>
-        public FileSystemRepository ImageCache { get; set; }
-
-        /// <summary>
-        /// The _locks
-        /// </summary>
-        private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new ConcurrentDictionary<string, SemaphoreSlim>();
-
-        /// <summary>
-        /// The _media encoder
-        /// </summary>
         private readonly IMediaEncoder _mediaEncoder;
+        private readonly IServerConfigurationManager _config;
+        private readonly IFileSystem _fileSystem;
 
-        /// <summary>
-        /// The _library manager
-        /// </summary>
-        private readonly ILibraryManager _libraryManager;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="BaseMetadataProvider" /> class.
-        /// </summary>
-        /// <param name="logManager">The log manager.</param>
-        /// <param name="configurationManager">The configuration manager.</param>
-        /// <param name="libraryManager">The library manager.</param>
-        /// <param name="mediaEncoder">The media encoder.</param>
-        public AudioImageProvider(ILogManager logManager, IServerConfigurationManager configurationManager, ILibraryManager libraryManager, IMediaEncoder mediaEncoder)
-            : base(logManager, configurationManager)
+        public AudioImageProvider(IMediaEncoder mediaEncoder, IServerConfigurationManager config, IFileSystem fileSystem)
         {
-            _libraryManager = libraryManager;
             _mediaEncoder = mediaEncoder;
-
-            ImageCache = new FileSystemRepository(Kernel.Instance.FFMpegManager.AudioImagesDataPath);
+            _config = config;
+            _fileSystem = fileSystem;
         }
 
-        /// <summary>
-        /// Gets a value indicating whether [refresh on version change].
-        /// </summary>
-        /// <value><c>true</c> if [refresh on version change]; otherwise, <c>false</c>.</value>
-        protected override bool RefreshOnVersionChange
+        public IEnumerable<ImageType> GetSupportedImages(IHasImages item)
         {
-            get
-            {
-                return true;
-            }
+            return new List<ImageType> { ImageType.Primary };
         }
 
-        /// <summary>
-        /// Gets the provider version.
-        /// </summary>
-        /// <value>The provider version.</value>
-        protected override string ProviderVersion
-        {
-            get
-            {
-                return "1";
-            }
-        }
-
-        /// <summary>
-        /// Supportses the specified item.
-        /// </summary>
-        /// <param name="item">The item.</param>
-        /// <returns><c>true</c> if XXXX, <c>false</c> otherwise</returns>
-        public override bool Supports(BaseItem item)
-        {
-            return item.LocationType == LocationType.FileSystem && item is Audio;
-        }
-
-        /// <summary>
-        /// Override this to return the date that should be compared to the last refresh date
-        /// to determine if this provider should be re-fetched.
-        /// </summary>
-        /// <param name="item">The item.</param>
-        /// <returns>DateTime.</returns>
-        protected override DateTime CompareDate(BaseItem item)
-        {
-            return item.DateModified;
-        }
-
-        /// <summary>
-        /// Gets the priority.
-        /// </summary>
-        /// <value>The priority.</value>
-        public override MetadataProviderPriority Priority
-        {
-            get { return MetadataProviderPriority.Last; }
-        }
-
-        /// <summary>
-        /// Fetches metadata and returns true or false indicating if any work that requires persistence was done
-        /// </summary>
-        /// <param name="item">The item.</param>
-        /// <param name="force">if set to <c>true</c> [force].</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>Task{System.Boolean}.</returns>
-        public override async Task<bool> FetchAsync(BaseItem item, bool force, CancellationToken cancellationToken)
+        public Task<DynamicImageResponse> GetImage(IHasImages item, ImageType type, CancellationToken cancellationToken)
         {
             var audio = (Audio)item;
 
-            if (string.IsNullOrEmpty(audio.PrimaryImagePath) && audio.MediaStreams.Any(s => s.Type == MediaStreamType.Video))
+            var imageStreams =
+                audio.GetMediaSources(false)
+                    .Take(1)
+                    .SelectMany(i => i.MediaStreams)
+                    .Where(i => i.Type == MediaStreamType.EmbeddedImage)
+                    .ToList();
+
+            // Can't extract if we didn't find a video stream in the file
+            if (imageStreams.Count == 0)
             {
+                return Task.FromResult(new DynamicImageResponse { HasImage = false });
+            }
+
+            return GetImage((Audio)item, imageStreams, cancellationToken);
+        }
+
+        public async Task<DynamicImageResponse> GetImage(Audio item, List<MediaStream> imageStreams, CancellationToken cancellationToken)
+        {
+            var path = GetAudioImagePath(item);
+
+            if (!_fileSystem.FileExists(path))
+            {
+                _fileSystem.CreateDirectory(Path.GetDirectoryName(path));
+
+                var imageStream = imageStreams.FirstOrDefault(i => (i.Comment ?? string.Empty).IndexOf("front", StringComparison.OrdinalIgnoreCase) != -1) ??
+                    imageStreams.FirstOrDefault(i => (i.Comment ?? string.Empty).IndexOf("cover", StringComparison.OrdinalIgnoreCase) != -1) ??
+                    imageStreams.FirstOrDefault();
+
+                var imageStreamIndex = imageStream == null ? (int?)null : imageStream.Index;
+
+                var tempFile = await _mediaEncoder.ExtractAudioImage(item.Path, imageStreamIndex, cancellationToken).ConfigureAwait(false);
+
+                _fileSystem.CopyFile(tempFile, path, true);
+
                 try
                 {
-                    await CreateImagesForSong(audio, cancellationToken).ConfigureAwait(false);
+                    _fileSystem.DeleteFile(tempFile);
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Logger.ErrorException("Error extracting image for {0}", ex, item.Name);
+
                 }
             }
 
-            SetLastRefreshed(item, DateTime.UtcNow);
-            return true;
-        }
-
-        /// <summary>
-        /// Creates the images for song.
-        /// </summary>
-        /// <param name="item">The item.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>Task.</returns>
-        /// <exception cref="System.InvalidOperationException">Can't extract an image unless the audio file has an embedded image.</exception>
-        private async Task CreateImagesForSong(Audio item, CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var album = item.Parent as MusicAlbum;
-
-            var filename = item.Album ?? string.Empty;
-            filename += item.Artist ?? string.Empty;
-            filename += album == null ? item.Id.ToString("N") + item.DateModified.Ticks : album.Id.ToString("N") + album.DateModified.Ticks;
-
-            var path = ImageCache.GetResourcePath(filename + "_primary", ".jpg");
-
-            if (!File.Exists(path))
+            return new DynamicImageResponse
             {
-                var semaphore = GetLock(path);
+                HasImage = true,
+                Path = path
+            };
+        }
 
-                // Acquire a lock
-                await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        private string GetAudioImagePath(Audio item)
+        {
+            var filename = item.Album ?? string.Empty;
+            filename += string.Join(",", item.Artists.ToArray());
 
-                // Check again
-                if (!File.Exists(path))
+            if (!string.IsNullOrWhiteSpace(item.Album))
+            {
+                filename += "_" + item.Album;
+            }
+            else if (!string.IsNullOrWhiteSpace(item.Name))
+            {
+                filename += "_" + item.Name;
+            }
+            else
+            {
+                filename += "_" + item.Id.ToString("N");
+            }
+
+            filename = filename.GetMD5() + ".jpg";
+
+            var prefix = filename.Substring(0, 1);
+
+            return Path.Combine(AudioImagesPath, prefix, filename);
+        }
+
+        public string AudioImagesPath
+        {
+            get
+            {
+                return Path.Combine(_config.ApplicationPaths.CachePath, "extracted-audio-images");
+            }
+        }
+
+        public string Name
+        {
+            get { return "Image Extractor"; }
+        }
+
+        public bool Supports(IHasImages item)
+        {
+            var audio = item as Audio;
+
+            return item.LocationType == LocationType.FileSystem && audio != null;
+        }
+
+        public bool HasChanged(IHasMetadata item, IDirectoryService directoryService)
+        {
+            if (item.EnableRefreshOnDateModifiedChange && !string.IsNullOrWhiteSpace(item.Path) && item.LocationType == LocationType.FileSystem)
+            {
+                var file = directoryService.GetFile(item.Path);
+                if (file != null && file.LastWriteTimeUtc != item.DateModified)
                 {
-                    try
-                    {
-                        var parentPath = Path.GetDirectoryName(path);
-
-                        if (!Directory.Exists(parentPath))
-                        {
-                            Directory.CreateDirectory(parentPath);
-                        }
-
-                        await _mediaEncoder.ExtractImage(new[] { item.Path }, InputType.AudioFile, null, path, cancellationToken).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                }
-                else
-                {
-                    semaphore.Release();
+                    return true;
                 }
             }
 
-            // Image is already in the cache
-            item.PrimaryImagePath = path;
-
-            await _libraryManager.UpdateItem(item, cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Gets the lock.
-        /// </summary>
-        /// <param name="filename">The filename.</param>
-        /// <returns>SemaphoreSlim.</returns>
-        private SemaphoreSlim GetLock(string filename)
-        {
-            return _locks.GetOrAdd(filename, key => new SemaphoreSlim(1, 1));
+            return false;
         }
     }
 }

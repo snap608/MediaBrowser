@@ -15,6 +15,10 @@ namespace MediaBrowser.Model.Entities
         /// </summary>
         Genres,
         /// <summary>
+        /// The keywords
+        /// </summary>
+        Keywords,
+        /// <summary>
         /// The production locations
         /// </summary>
         ProductionLocations,
@@ -25,6 +29,34 @@ namespace MediaBrowser.Model.Entities
         /// <summary>
         /// The tags
         /// </summary>
-        Tags
+        Tags,
+        /// <summary>
+        /// The name
+        /// </summary>
+        Name,
+        /// <summary>
+        /// The overview
+        /// </summary>
+        Overview,
+        /// <summary>
+        /// The runtime
+        /// </summary>
+        Runtime,
+        /// <summary>
+        /// The official rating
+        /// </summary>
+        OfficialRating,
+        /// <summary>
+        /// The images
+        /// </summary>
+        Images,
+        /// <summary>
+        /// The backdrops
+        /// </summary>
+        Backdrops,
+        /// <summary>
+        /// The screenshots
+        /// </summary>
+        Screenshots
     }
 }

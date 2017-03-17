@@ -1,42 +1,82 @@
-﻿using MediaBrowser.Model.Entities;
-using System.Runtime.Serialization;
+﻿using MediaBrowser.Controller.Entities.Audio;
+using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Configuration;
+using System.Collections.Generic;
+using MediaBrowser.Model.Serialization;
 
 namespace MediaBrowser.Controller.Entities
 {
-    public class MusicVideo : Video
+    public class MusicVideo : Video, IHasArtist, IHasMusicGenres, IHasLookupInfo<MusicVideoInfo>
     {
-        /// <summary>
-        /// Should be overridden to return the proper folder where metadata lives
-        /// </summary>
-        /// <value>The meta location.</value>
+        public List<string> Artists { get; set; }
+
+        public MusicVideo()
+        {
+            Artists = new List<string>();
+        }
+
         [IgnoreDataMember]
-        public override string MetaLocation
+        public List<string> AllArtists
         {
             get
             {
-                return VideoType == VideoType.VideoFile || VideoType == VideoType.Iso ? System.IO.Path.GetDirectoryName(Path) : Path;
+                return Artists;
             }
         }
 
-        /// <summary>
-        /// Gets the user data key.
-        /// </summary>
-        /// <returns>System.String.</returns>
-        public override string GetUserDataKey()
-        {
-            return this.GetProviderId(MetadataProviders.Tmdb) ?? this.GetProviderId(MetadataProviders.Imdb) ?? base.GetUserDataKey();
-        }
-
-        /// <summary>
-        /// Needed because the resolver stops at the movie folder and we find the video inside.
-        /// </summary>
-        /// <value><c>true</c> if [use parent path to create resolve args]; otherwise, <c>false</c>.</value>
-        protected override bool UseParentPathToCreateResolveArgs
+        [IgnoreDataMember]
+        protected override bool SupportsIsInMixedFolderDetection
         {
             get
             {
-                return VideoType == VideoType.VideoFile || VideoType == VideoType.Iso;
+                return true;
             }
+        }
+
+        public override UnratedItem GetBlockUnratedType()
+        {
+            return UnratedItem.Music;
+        }
+
+        public MusicVideoInfo GetLookupInfo()
+        {
+            return GetItemLookupInfo<MusicVideoInfo>();
+        }
+
+        public override bool BeforeMetadataRefresh()
+        {
+            var hasChanges = base.BeforeMetadataRefresh();
+
+            if (!ProductionYear.HasValue)
+            {
+                var info = LibraryManager.ParseName(Name);
+
+                var yearInName = info.Year;
+
+                if (yearInName.HasValue)
+                {
+                    ProductionYear = yearInName;
+                    hasChanges = true;
+                }
+                else
+                {
+                    // Try to get the year from the folder name
+                    if (!DetectIsInMixedFolder())
+                    {
+                        info = LibraryManager.ParseName(System.IO.Path.GetFileName(ContainingFolderPath));
+
+                        yearInName = info.Year;
+
+                        if (yearInName.HasValue)
+                        {
+                            ProductionYear = yearInName;
+                            hasChanges = true;
+                        }
+                    }
+                }
+            }
+
+            return hasChanges;
         }
     }
 }
