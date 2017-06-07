@@ -1,4 +1,6 @@
 ﻿
+using System.IO;
+
 namespace MediaBrowser.Model.Net
 {
     /// <summary>
@@ -13,6 +15,8 @@ namespace MediaBrowser.Model.Net
 		/// <param name="localPort">The local port to bind to.</param>
 		/// <returns>A <see cref="ISocket"/> implementation.</returns>
 		ISocket CreateUdpSocket(int localPort);
+
+        ISocket CreateUdpBroadcastSocket(int localPort);
 
         ISocket CreateTcpSocket(IpAddressInfo remoteAddress, int remotePort);
 
@@ -31,6 +35,8 @@ namespace MediaBrowser.Model.Net
         ISocket CreateUdpMulticastSocket(string ipAddress, int multicastTimeToLive, int localPort);
 
         IAcceptSocket CreateSocket(IpAddressFamily family, SocketType socketType, ProtocolType protocolType, bool dualMode);
+
+        Stream CreateNetworkStream(ISocket socket, bool ownsSocket);
     }
 
     public enum SocketType

@@ -8,7 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Xml;
-using MediaBrowser.Common.IO;
+
 using MediaBrowser.Controller.IO;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Xml;
@@ -84,7 +84,7 @@ namespace MediaBrowser.LocalMetadata.Parsers
                             // even though it's actually using the metadata folder.
                             filename = Path.GetFileName(filename);
 
-                            var parentFolder = Path.GetDirectoryName(_xmlPath);
+                            var parentFolder = _fileSystem.GetDirectoryName(_xmlPath);
                             filename = Path.Combine(parentFolder, filename);
                             var file = _fileSystem.GetFileInfo(filename);
 

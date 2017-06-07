@@ -49,21 +49,6 @@ namespace MediaBrowser.MediaEncoding.Encoder
         /// </summary>
         private readonly SemaphoreSlim _thumbnailResourcePool = new SemaphoreSlim(1, 1);
 
-        /// <summary>
-        /// The video image resource pool
-        /// </summary>
-        private readonly SemaphoreSlim _videoImageResourcePool = new SemaphoreSlim(1, 1);
-
-        /// <summary>
-        /// The audio image resource pool
-        /// </summary>
-        private readonly SemaphoreSlim _audioImageResourcePool = new SemaphoreSlim(2, 2);
-
-        /// <summary>
-        /// The FF probe resource pool
-        /// </summary>
-        private readonly SemaphoreSlim _ffProbeResourcePool = new SemaphoreSlim(2, 2);
-
         public string FFMpegPath { get; private set; }
 
         public string FFProbePath { get; private set; }
@@ -202,18 +187,6 @@ namespace MediaBrowser.MediaEncoding.Encoder
             }
         }
 
-        public bool IsDefaultEncoderPath
-        {
-            get
-            {
-                var path = FFMpegPath;
-
-                var parentPath = Path.Combine(ConfigurationManager.ApplicationPaths.ProgramDataPath, "ffmpeg", "20160410");
-
-                return FileSystem.ContainsSubPath(parentPath, path);
-            }
-        }
-
         private bool IsSystemInstalledPath(string path)
         {
             if (path.IndexOf("/", StringComparison.Ordinal) == -1 && path.IndexOf("\\", StringComparison.Ordinal) == -1)
@@ -237,12 +210,11 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
                 if (EnableEncoderFontFile)
                 {
-                    var directory = Path.GetDirectoryName(FFMpegPath);
+                    var directory = FileSystem.GetDirectoryName(FFMpegPath);
 
                     if (!string.IsNullOrWhiteSpace(directory) && FileSystem.ContainsSubPath(ConfigurationManager.ApplicationPaths.ProgramDataPath, directory))
                     {
-                        await new FontConfigLoader(_httpClient, ConfigurationManager.ApplicationPaths, _logger, _zipClient,
-                                FileSystem).DownloadFonts(directory).ConfigureAwait(false);
+                        await new FontConfigLoader(_httpClient, ConfigurationManager.ApplicationPaths, _logger, _zipClient, FileSystem).DownloadFonts(directory).ConfigureAwait(false);
                     }
                 }
             }
@@ -280,7 +252,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
             }
         }
 
-        public async Task UpdateEncoderPath(string path, string pathType)
+        public void UpdateEncoderPath(string path, string pathType)
         {
             if (_hasExternalEncoder)
             {
@@ -443,7 +415,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
         private string GetProbePathFromEncoderPath(string appPath)
         {
-            return FileSystem.GetFilePaths(Path.GetDirectoryName(appPath))
+            return FileSystem.GetFilePaths(FileSystem.GetDirectoryName(appPath))
                 .FirstOrDefault(i => string.Equals(Path.GetFileNameWithoutExtension(i), "ffprobe", StringComparison.OrdinalIgnoreCase));
         }
 
@@ -601,20 +573,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
             using (var processWrapper = new ProcessWrapper(process, this, _logger))
             {
-                await _ffProbeResourcePool.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                try
-                {
-                    StartProcess(processWrapper);
-                }
-                catch (Exception ex)
-                {
-                    _ffProbeResourcePool.Release();
-
-                    _logger.ErrorException("Error starting ffprobe", ex);
-
-                    throw;
-                }
+                StartProcess(processWrapper);
 
                 try
                 {
@@ -647,9 +606,9 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
                     var videoStream = mediaInfo.MediaStreams.FirstOrDefault(i => i.Type == MediaStreamType.Video);
 
-                    if (videoStream != null)
+                    if (videoStream != null && !videoStream.IsInterlaced)
                     {
-                        var isInterlaced = await DetectInterlaced(mediaInfo, videoStream, inputPath, probeSizeArgument).ConfigureAwait(false);
+                        var isInterlaced = DetectInterlaced(mediaInfo, videoStream);
 
                         if (isInterlaced)
                         {
@@ -665,196 +624,24 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
                     throw;
                 }
-                finally
-                {
-                    _ffProbeResourcePool.Release();
-                }
             }
         }
 
-        private async Task<bool> DetectInterlaced(MediaSourceInfo video, MediaStream videoStream, string inputPath, string probeSizeArgument)
+        private bool DetectInterlaced(MediaSourceInfo video, MediaStream videoStream)
         {
-            var formats = (video.Container ?? string.Empty).Split(',').ToList();
-            var enableInterlacedDection = formats.Contains("vob", StringComparer.OrdinalIgnoreCase) ||
-                                          formats.Contains("m2ts", StringComparer.OrdinalIgnoreCase) ||
-                                          formats.Contains("ts", StringComparer.OrdinalIgnoreCase) ||
-                                          formats.Contains("mpegts", StringComparer.OrdinalIgnoreCase) ||
-                                          formats.Contains("wtv", StringComparer.OrdinalIgnoreCase);
-
             // If it's mpeg based, assume true
             if ((videoStream.Codec ?? string.Empty).IndexOf("mpeg", StringComparison.OrdinalIgnoreCase) != -1)
             {
-                if (enableInterlacedDection)
-                {
-                    return true;
-                }
-            }
-            else
-            {
-                // If the video codec is not some form of mpeg, then take a shortcut and limit this to containers that are likely to have interlaced content
-                if (!enableInterlacedDection)
-                {
-                    return false;
-                }
-            }
+                var formats = (video.Container ?? string.Empty).Split(',').ToList();
+                return formats.Contains("vob", StringComparer.OrdinalIgnoreCase) ||
+                                              formats.Contains("m2ts", StringComparer.OrdinalIgnoreCase) ||
+                                              formats.Contains("ts", StringComparer.OrdinalIgnoreCase) ||
+                                              formats.Contains("mpegts", StringComparer.OrdinalIgnoreCase) ||
+                                              formats.Contains("wtv", StringComparer.OrdinalIgnoreCase);
 
-            if (video.Protocol != MediaProtocol.File)
-            {
-                return false;
-            }
-
-            var args = "{0} -i {1} -map 0:v:{2} -an -filter:v idet -frames:v 500 -an -f null /dev/null";
-
-            var process = _processFactory.Create(new ProcessOptions
-            {
-                CreateNoWindow = true,
-                UseShellExecute = false,
-
-                // Must consume both or ffmpeg may hang due to deadlocks. See comments below.   
-                RedirectStandardError = true,
-                FileName = FFMpegPath,
-                Arguments = string.Format(args, probeSizeArgument, inputPath, videoStream.Index.ToString(CultureInfo.InvariantCulture)).Trim(),
-
-                IsHidden = true,
-                ErrorDialog = false,
-                EnableRaisingEvents = true
-            });
-
-            _logger.Debug("{0} {1}", process.StartInfo.FileName, process.StartInfo.Arguments);
-            var idetFoundInterlaced = false;
-
-            using (var processWrapper = new ProcessWrapper(process, this, _logger))
-            {
-                try
-                {
-                    StartProcess(processWrapper);
-                }
-                catch (Exception ex)
-                {
-                    _logger.ErrorException("Error starting ffprobe", ex);
-
-                    throw;
-                }
-
-                try
-                {
-                    //process.BeginOutputReadLine();
-
-                    using (var reader = new StreamReader(process.StandardError.BaseStream))
-                    {
-                        while (!reader.EndOfStream)
-                        {
-                            var line = await reader.ReadLineAsync().ConfigureAwait(false);
-
-                            if (line.StartsWith("[Parsed_idet", StringComparison.OrdinalIgnoreCase))
-                            {
-                                var idetResult = AnalyzeIdetResult(line);
-
-                                if (idetResult.HasValue)
-                                {
-                                    if (!idetResult.Value)
-                                    {
-                                        return false;
-                                    }
-
-                                    idetFoundInterlaced = true;
-                                }
-                            }
-                        }
-                    }
-
-                }
-                catch
-                {
-                    StopProcess(processWrapper, 100);
-
-                    throw;
-                }
-            }
-
-            return idetFoundInterlaced;
-        }
-
-        private bool? AnalyzeIdetResult(string line)
-        {
-            // As you can see, the filter only guessed one frame as progressive. 
-            // Results like this are pretty typical. So if less than 30% of the detections are in the "Undetermined" category, then I only consider the video to be interlaced if at least 65% of the identified frames are in either the TFF or BFF category. 
-            // In this case (310 + 311)/(622) = 99.8% which is well over the 65% metric. I may refine that number with more testing but I honestly do not believe I will need to.
-            // http://awel.domblogger.net/videoTranscode/interlace.html
-            var index = line.IndexOf("detection:", StringComparison.OrdinalIgnoreCase);
-
-            if (index == -1)
-            {
-                return null;
-            }
-
-            line = line.Substring(index).Trim();
-            var parts = line.Split(' ').Where(i => !string.IsNullOrWhiteSpace(i)).Select(i => i.Trim()).ToList();
-
-            if (parts.Count < 2)
-            {
-                return null;
-            }
-            double tff = 0;
-            double bff = 0;
-            double progressive = 0;
-            double undetermined = 0;
-            double total = 0;
-
-            for (var i = 0; i < parts.Count - 1; i++)
-            {
-                var part = parts[i];
-
-                if (string.Equals(part, "tff:", StringComparison.OrdinalIgnoreCase))
-                {
-                    tff = GetNextPart(parts, i);
-                    total += tff;
-                }
-                else if (string.Equals(part, "bff:", StringComparison.OrdinalIgnoreCase))
-                {
-                    bff = GetNextPart(parts, i);
-                    total += tff;
-                }
-                else if (string.Equals(part, "progressive:", StringComparison.OrdinalIgnoreCase))
-                {
-                    progressive = GetNextPart(parts, i);
-                    total += progressive;
-                }
-                else if (string.Equals(part, "undetermined:", StringComparison.OrdinalIgnoreCase))
-                {
-                    undetermined = GetNextPart(parts, i);
-                    total += undetermined;
-                }
-            }
-
-            if (total == 0)
-            {
-                return null;
-            }
-
-            if ((undetermined / total) >= .3)
-            {
-                return false;
-            }
-
-            if (((tff + bff) / total) >= .4)
-            {
-                return true;
             }
 
             return false;
-        }
-
-        private int GetNextPart(List<string> parts, int index)
-        {
-            var next = parts[index + 1];
-
-            int value;
-            if (int.TryParse(next, NumberStyles.Any, CultureInfo.InvariantCulture, out value))
-            {
-                return value;
-            }
-            return 0;
         }
 
         /// <summary>
@@ -880,8 +667,6 @@ namespace MediaBrowser.MediaEncoding.Encoder
         private async Task<string> ExtractImage(string[] inputFiles, string container, int? imageStreamIndex, MediaProtocol protocol, bool isAudio,
             Video3DFormat? threedFormat, TimeSpan? offset, CancellationToken cancellationToken)
         {
-            var resourcePool = isAudio ? _audioImageResourcePool : _videoImageResourcePool;
-
             var inputArgument = GetInputArgument(inputFiles, protocol);
 
             if (isAudio)
@@ -896,7 +681,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
             {
                 try
                 {
-                    return await ExtractImageInternal(inputArgument, container, imageStreamIndex, protocol, threedFormat, offset, true, resourcePool, cancellationToken).ConfigureAwait(false);
+                    return await ExtractImageInternal(inputArgument, container, imageStreamIndex, protocol, threedFormat, offset, true, cancellationToken).ConfigureAwait(false);
                 }
                 catch (ArgumentException)
                 {
@@ -908,10 +693,10 @@ namespace MediaBrowser.MediaEncoding.Encoder
                 }
             }
 
-            return await ExtractImageInternal(inputArgument, container, imageStreamIndex, protocol, threedFormat, offset, false, resourcePool, cancellationToken).ConfigureAwait(false);
+            return await ExtractImageInternal(inputArgument, container, imageStreamIndex, protocol, threedFormat, offset, false, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task<string> ExtractImageInternal(string inputPath, string container, int? imageStreamIndex, MediaProtocol protocol, Video3DFormat? threedFormat, TimeSpan? offset, bool useIFrame, SemaphoreSlim resourcePool, CancellationToken cancellationToken)
+        private async Task<string> ExtractImageInternal(string inputPath, string container, int? imageStreamIndex, MediaProtocol protocol, Video3DFormat? threedFormat, TimeSpan? offset, bool useIFrame, CancellationToken cancellationToken)
         {
             if (string.IsNullOrEmpty(inputPath))
             {
@@ -919,7 +704,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
             }
 
             var tempExtractPath = Path.Combine(ConfigurationManager.ApplicationPaths.TempDirectory, Guid.NewGuid() + ".jpg");
-            FileSystem.CreateDirectory(Path.GetDirectoryName(tempExtractPath));
+            FileSystem.CreateDirectory(FileSystem.GetDirectoryName(tempExtractPath));
 
             // apply some filters to thumbnail extracted below (below) crop any black lines that we made and get the correct ar then scale to width 600. 
             // This filter chain may have adverse effects on recorded tv thumbnails if ar changes during presentation ex. commercials @ diff ar
@@ -991,31 +776,21 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
             using (var processWrapper = new ProcessWrapper(process, this, _logger))
             {
-                await resourcePool.WaitAsync(cancellationToken).ConfigureAwait(false);
-
                 bool ranToCompletion;
 
-                try
+                StartProcess(processWrapper);
+
+                var timeoutMs = ConfigurationManager.Configuration.ImageExtractionTimeoutMs;
+                if (timeoutMs <= 0)
                 {
-                    StartProcess(processWrapper);
-
-                    var timeoutMs = ConfigurationManager.Configuration.ImageExtractionTimeoutMs;
-                    if (timeoutMs <= 0)
-                    {
-                        timeoutMs = DefaultImageExtractionTimeoutMs;
-                    }
-
-                    ranToCompletion = process.WaitForExit(timeoutMs);
-
-                    if (!ranToCompletion)
-                    {
-                        StopProcess(processWrapper, 1000);
-                    }
-
+                    timeoutMs = DefaultImageExtractionTimeoutMs;
                 }
-                finally
+
+                ranToCompletion = await process.WaitForExitAsync(timeoutMs).ConfigureAwait(false);
+
+                if (!ranToCompletion)
                 {
-                    resourcePool.Release();
+                    StopProcess(processWrapper, 1000);
                 }
 
                 var exitCode = ranToCompletion ? processWrapper.ExitCode ?? 0 : -1;
@@ -1117,7 +892,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
                     while (isResponsive)
                     {
-                        if (process.WaitForExit(30000))
+                        if (await process.WaitForExitAsync(30000).ConfigureAwait(false))
                         {
                             ranToCompletion = true;
                             break;
@@ -1274,7 +1049,6 @@ namespace MediaBrowser.MediaEncoding.Encoder
         {
             if (dispose)
             {
-                _videoImageResourcePool.Dispose();
                 StopProcesses();
             }
         }

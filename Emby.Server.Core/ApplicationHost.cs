@@ -61,7 +61,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Emby.Common.Implementations;
 using Emby.Common.Implementations.Archiving;
-using Emby.Common.Implementations.Networking;
+using Emby.Common.Implementations.IO;
 using Emby.Common.Implementations.Reflection;
 using Emby.Common.Implementations.Serialization;
 using Emby.Common.Implementations.TextEncoding;
@@ -93,7 +93,7 @@ using Emby.Server.Implementations.Social;
 using Emby.Server.Implementations.Channels;
 using Emby.Server.Implementations.Collections;
 using Emby.Server.Implementations.Dto;
-using Emby.Server.Implementations.EntryPoints;
+using Emby.Server.Implementations.IO;
 using Emby.Server.Implementations.FileOrganization;
 using Emby.Server.Implementations.HttpServer;
 using Emby.Server.Implementations.HttpServer.Security;
@@ -107,7 +107,6 @@ using Emby.Server.Implementations.Playlists;
 using Emby.Server.Implementations;
 using Emby.Server.Implementations.ServerManager;
 using Emby.Server.Implementations.Session;
-using Emby.Server.Implementations.Social;
 using Emby.Server.Implementations.TV;
 using Emby.Server.Implementations.Updates;
 using MediaBrowser.Model.Activity;
@@ -188,7 +187,7 @@ namespace Emby.Server.Core
         /// <value>The HTTP server.</value>
         private IHttpServer HttpServer { get; set; }
         private IDtoService DtoService { get; set; }
-        private IImageProcessor ImageProcessor { get; set; }
+        public IImageProcessor ImageProcessor { get; set; }
 
         /// <summary>
         /// Gets or sets the media encoder.
@@ -258,7 +257,7 @@ namespace Emby.Server.Core
         internal IPowerManagement PowerManagement { get; private set; }
         internal IImageEncoder ImageEncoder { get; private set; }
 
-        private readonly Action<string, string> _certificateGenerator;
+        private readonly Action<string, string, string> _certificateGenerator;
         private readonly Func<string> _defaultUserNameFactory;
 
         /// <summary>
@@ -275,7 +274,7 @@ namespace Emby.Server.Core
             ISystemEvents systemEvents,
             IMemoryStreamFactory memoryStreamFactory,
             INetworkManager networkManager,
-            Action<string, string> certificateGenerator,
+            Action<string, string, string> certificateGenerator,
             Func<string> defaultUsernameFactory)
             : base(applicationPaths,
                   logManager,
@@ -294,6 +293,13 @@ namespace Emby.Server.Core
             ImageEncoder = imageEncoder;
 
             SetBaseExceptionMessage();
+
+            if (environmentInfo.OperatingSystem == MediaBrowser.Model.System.OperatingSystem.Windows)
+            {
+                fileSystem.AddShortcutHandler(new LnkShortcutHandler());
+            }
+
+            fileSystem.AddShortcutHandler(new MbLinkShortcutHandler(fileSystem));
         }
 
         private Version _version;
@@ -486,7 +492,6 @@ namespace Emby.Server.Core
         {
             var migrations = new List<IVersionMigration>
             {
-                new UpdateLevelMigration(ServerConfigurationManager, this, HttpClient, JsonSerializer, _releaseAssetFilename, Logger)
             };
 
             foreach (var task in migrations)
@@ -558,7 +563,7 @@ namespace Emby.Server.Core
             StringExtensions.LocalizationManager = LocalizationManager;
             RegisterSingleInstance(LocalizationManager);
 
-            ITextEncoding textEncoding = new TextEncoding(FileSystemManager);
+            ITextEncoding textEncoding = new TextEncoding(FileSystemManager, LogManager.GetLogger("TextEncoding"));
             RegisterSingleInstance(textEncoding);
             Utilities.EncodingHelper = textEncoding;
             RegisterSingleInstance<IBlurayExaminer>(() => new BdInfoExaminer(FileSystemManager, textEncoding));
@@ -583,7 +588,7 @@ namespace Emby.Server.Core
             FileOrganizationRepository = GetFileOrganizationRepository();
             RegisterSingleInstance(FileOrganizationRepository);
 
-            AuthenticationRepository = await GetAuthenticationRepository().ConfigureAwait(false);
+            AuthenticationRepository = GetAuthenticationRepository();
             RegisterSingleInstance(AuthenticationRepository);
 
             UserManager = new UserManager(LogManager.GetLogger("UserManager"), ServerConfigurationManager, UserRepository, XmlSerializer, NetworkManager, () => ImageProcessor, () => DtoService, () => ConnectManager, this, JsonSerializer, FileSystemManager, CryptographyProvider, _defaultUserNameFactory());
@@ -603,10 +608,10 @@ namespace Emby.Server.Core
 
             RegisterSingleInstance<ISearchEngine>(() => new SearchEngine(LogManager, LibraryManager, UserManager));
 
-            CertificatePath = GetCertificatePath(true);
-            Certificate = GetCertificate(CertificatePath);
+            CertificateInfo = GetCertificateInfo(true);
+            Certificate = GetCertificate(CertificateInfo);
 
-            HttpServer = HttpServerFactory.CreateServer(this, LogManager, ServerConfigurationManager, NetworkManager, MemoryStreamFactory, "Emby", "web/index.html", textEncoding, SocketFactory, CryptographyProvider, JsonSerializer, XmlSerializer, EnvironmentInfo, Certificate, SupportsDualModeSockets);
+            HttpServer = HttpServerFactory.CreateServer(this, LogManager, ServerConfigurationManager, NetworkManager, MemoryStreamFactory, "Emby", "web/index.html", textEncoding, SocketFactory, CryptographyProvider, JsonSerializer, XmlSerializer, EnvironmentInfo, Certificate, FileSystemManager, SupportsDualModeSockets);
             HttpServer.GlobalResponse = LocalizationManager.GetLocalizedString("StartupEmbyServerIsLoading");
             RegisterSingleInstance(HttpServer, false);
             progress.Report(10);
@@ -739,8 +744,10 @@ namespace Emby.Server.Core
             }
         }
 
-        private ICertificate GetCertificate(string certificateLocation)
+        private ICertificate GetCertificate(CertificateInfo info)
         {
+            var certificateLocation = info == null ? null : info.Path;
+
             if (string.IsNullOrWhiteSpace(certificateLocation))
             {
                 return null;
@@ -753,7 +760,10 @@ namespace Emby.Server.Core
                     return null;
                 }
 
-                X509Certificate2 localCert = new X509Certificate2(certificateLocation);
+                // Don't use an empty string password
+                var password = string.IsNullOrWhiteSpace(info.Password) ? null : info.Password;
+
+                X509Certificate2 localCert = new X509Certificate2(certificateLocation, password);
                 //localCert.PrivateKey = PrivateKey.CreateFromFile(pvk_file).RSA;
                 if (!localCert.HasPrivateKey)
                 {
@@ -772,14 +782,7 @@ namespace Emby.Server.Core
 
         private IImageProcessor GetImageProcessor()
         {
-            var maxConcurrentImageProcesses = Math.Max(Environment.ProcessorCount, 4);
-
-            if (StartupOptions.ContainsOption("-imagethreads"))
-            {
-                int.TryParse(StartupOptions.GetOption("-imagethreads"), NumberStyles.Any, CultureInfo.InvariantCulture, out maxConcurrentImageProcesses);
-            }
-
-            return new ImageProcessor(LogManager.GetLogger("ImageProcessor"), ServerConfigurationManager.ApplicationPaths, FileSystemManager, JsonSerializer, ImageEncoder, maxConcurrentImageProcesses, () => LibraryManager, TimerFactory);
+            return new ImageProcessor(LogManager.GetLogger("ImageProcessor"), ServerConfigurationManager.ApplicationPaths, FileSystemManager, JsonSerializer, ImageEncoder, () => LibraryManager, TimerFactory);
         }
 
         protected virtual FFMpegInstallInfo GetFfmpegInstallInfo()
@@ -796,16 +799,24 @@ namespace Emby.Server.Core
                 info.FFMpegFilename = "ffmpeg";
                 info.FFProbeFilename = "ffprobe";
                 info.ArchiveType = "7z";
-                info.Version = "20160215";
+                info.Version = "20170308";
                 info.DownloadUrls = GetLinuxDownloadUrls();
             }
             else if (EnvironmentInfo.OperatingSystem == MediaBrowser.Model.System.OperatingSystem.Windows)
             {
                 info.FFMpegFilename = "ffmpeg.exe";
                 info.FFProbeFilename = "ffprobe.exe";
-                info.Version = "20160410";
+                info.Version = "20170308";
                 info.ArchiveType = "7z";
                 info.DownloadUrls = GetWindowsDownloadUrls();
+            }
+            else if (EnvironmentInfo.OperatingSystem == MediaBrowser.Model.System.OperatingSystem.OSX)
+            {
+                info.FFMpegFilename = "ffmpeg";
+                info.FFProbeFilename = "ffprobe";
+                info.ArchiveType = "7z";
+                info.Version = "20170308";
+                info.DownloadUrls = GetMacDownloadUrls();
             }
             else
             {
@@ -816,6 +827,20 @@ namespace Emby.Server.Core
             return info;
         }
 
+        private string[] GetMacDownloadUrls()
+        {
+            switch (EnvironmentInfo.SystemArchitecture)
+            {
+                case Architecture.X64:
+                    return new[]
+                    {
+                                "https://embydata.com/downloads/ffmpeg/osx/ffmpeg-x64-20170308.7z"
+                    };
+            }
+
+            return new string[] { };
+        }
+
         private string[] GetWindowsDownloadUrls()
         {
             switch (EnvironmentInfo.SystemArchitecture)
@@ -823,12 +848,12 @@ namespace Emby.Server.Core
                 case Architecture.X64:
                     return new[]
                     {
-                                "https://github.com/MediaBrowser/Emby.Resources/raw/master/ffmpeg/windows/ffmpeg-20160410-win64.7z"
+                                "https://embydata.com/downloads/ffmpeg/windows/ffmpeg-20170308-win64.7z"
                     };
                 case Architecture.X86:
                     return new[]
                     {
-                                "https://github.com/MediaBrowser/Emby.Resources/raw/master/ffmpeg/windows/ffmpeg-20160410-win32.7z"
+                                "https://embydata.com/downloads/ffmpeg/windows/ffmpeg-20170308-win32.7z"
                     };
             }
 
@@ -842,12 +867,12 @@ namespace Emby.Server.Core
                 case Architecture.X64:
                     return new[]
                     {
-                                "https://github.com/MediaBrowser/Emby.Resources/raw/master/ffmpeg/linux/ffmpeg-git-20160215-64bit-static.7z"
+                                "https://embydata.com/downloads/ffmpeg/linux/ffmpeg-git-20170301-64bit-static.7z"
                     };
                 case Architecture.X86:
                     return new[]
                     {
-                                "https://github.com/MediaBrowser/Emby.Resources/raw/master/ffmpeg/linux/ffmpeg-git-20160215-32bit-static.7z"
+                                "https://embydata.com/downloads/ffmpeg/linux/ffmpeg-git-20170301-32bit-static.7z"
                     };
             }
 
@@ -922,7 +947,7 @@ namespace Emby.Server.Core
             return repo;
         }
 
-        private async Task<IAuthenticationRepository> GetAuthenticationRepository()
+        private IAuthenticationRepository GetAuthenticationRepository()
         {
             var repo = new AuthenticationRepository(LogManager.GetLogger("AuthenticationRepository"), ServerConfigurationManager.ApplicationPaths);
 
@@ -1036,7 +1061,7 @@ namespace Emby.Server.Core
             SyncManager.AddParts(GetExports<ISyncProvider>());
         }
 
-        private string CertificatePath { get; set; }
+        private CertificateInfo CertificateInfo { get; set; }
         private ICertificate Certificate { get; set; }
 
         private IEnumerable<string> GetUrlPrefixes()
@@ -1052,7 +1077,7 @@ namespace Emby.Server.Core
                     "http://"+i+":" + HttpPort + "/"
                 };
 
-                if (!string.IsNullOrWhiteSpace(CertificatePath))
+                if (CertificateInfo != null)
                 {
                     prefixes.Add("https://" + i + ":" + HttpsPort + "/");
                 }
@@ -1095,27 +1120,32 @@ namespace Emby.Server.Core
             }
         }
 
-        private string GetCertificatePath(bool generateCertificate)
+        private CertificateInfo GetCertificateInfo(bool generateCertificate)
         {
             if (!string.IsNullOrWhiteSpace(ServerConfigurationManager.Configuration.CertificatePath))
             {
                 // Custom cert
-                return ServerConfigurationManager.Configuration.CertificatePath;
+                return new CertificateInfo
+                {
+                    Path = ServerConfigurationManager.Configuration.CertificatePath,
+                    Password = ServerConfigurationManager.Configuration.CertificatePassword
+                };
             }
 
             // Generate self-signed cert
             var certHost = GetHostnameFromExternalDns(ServerConfigurationManager.Configuration.WanDdns);
-            var certPath = Path.Combine(ServerConfigurationManager.ApplicationPaths.ProgramDataPath, "ssl", "cert_" + (certHost + "1").GetMD5().ToString("N") + ".pfx");
+            var certPath = Path.Combine(ServerConfigurationManager.ApplicationPaths.ProgramDataPath, "ssl", "cert_" + (certHost + "2").GetMD5().ToString("N") + ".pfx");
+            var password = "embycert";
 
             if (generateCertificate)
             {
                 if (!FileSystemManager.FileExists(certPath))
                 {
-                    FileSystemManager.CreateDirectory(Path.GetDirectoryName(certPath));
+                    FileSystemManager.CreateDirectory(FileSystemManager.GetDirectoryName(certPath));
 
                     try
                     {
-                        _certificateGenerator(certPath, certHost);
+                        _certificateGenerator(certPath, certHost, password);
                     }
                     catch (Exception ex)
                     {
@@ -1125,7 +1155,11 @@ namespace Emby.Server.Core
                 }
             }
 
-            return certPath;
+            return new CertificateInfo
+            {
+                Path = certPath,
+                Password = password
+            };
         }
 
         /// <summary>
@@ -1161,7 +1195,11 @@ namespace Emby.Server.Core
                 requiresRestart = true;
             }
 
-            if (!string.Equals(CertificatePath, GetCertificatePath(false), StringComparison.OrdinalIgnoreCase))
+            var currentCertPath = CertificateInfo == null ? null : CertificateInfo.Path;
+            var newCertInfo = GetCertificateInfo(false);
+            var newCertPath = newCertInfo == null ? null : newCertInfo.Path;
+
+            if (!string.Equals(currentCertPath, newCertPath, StringComparison.OrdinalIgnoreCase))
             {
                 requiresRestart = true;
             }
@@ -1238,9 +1276,6 @@ namespace Emby.Server.Core
 
             // Emby.Server implementations
             list.Add(GetAssembly(typeof(InstallationManager)));
-
-            // Emby.Server.Core
-            list.Add(GetAssembly(typeof(ApplicationHost)));
 
             // MediaEncoding
             list.Add(GetAssembly(typeof(MediaEncoder)));
@@ -1338,7 +1373,7 @@ namespace Emby.Server.Core
                 SupportsLibraryMonitor = true,
                 EncoderLocationType = MediaEncoder.EncoderLocationType,
                 SystemArchitecture = EnvironmentInfo.SystemArchitecture,
-                SystemUpdateLevel = ConfigurationManager.CommonConfiguration.SystemUpdateLevel,
+                SystemUpdateLevel = SystemUpdateLevel,
                 PackageName = StartupOptions.GetOption("-package")
             };
         }
@@ -1563,7 +1598,7 @@ namespace Emby.Server.Core
             }
             catch (NotImplementedException)
             {
-                
+
             }
             catch (Exception ex)
             {
@@ -1604,7 +1639,7 @@ namespace Emby.Server.Core
         public override async Task<CheckForUpdateResult> CheckForApplicationUpdate(CancellationToken cancellationToken, IProgress<double> progress)
         {
             var cacheLength = TimeSpan.FromHours(3);
-            var updateLevel = ConfigurationManager.CommonConfiguration.SystemUpdateLevel;
+            var updateLevel = SystemUpdateLevel;
 
             if (updateLevel == PackageVersionClass.Beta)
             {
@@ -1714,14 +1749,8 @@ namespace Emby.Server.Core
             ((IProcess)sender).Dispose();
         }
 
-        public void EnableLoopback(string appName)
+        public virtual void EnableLoopback(string appName)
         {
-            EnableLoopbackInternal(appName);
-        }
-
-        protected virtual void EnableLoopbackInternal(string appName)
-        {
-            
         }
 
         private void RegisterModules()
@@ -1757,6 +1786,11 @@ namespace Emby.Server.Core
         {
             Container.Register(typeInterface, typeImplementation);
         }
+    }
 
+    internal class CertificateInfo
+    {
+        public string Path { get; set; }
+        public string Password { get; set; }
     }
 }

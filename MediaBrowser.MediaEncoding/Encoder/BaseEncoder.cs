@@ -66,17 +66,17 @@ namespace MediaBrowser.MediaEncoding.Encoder
             IProgress<double> progress,
             CancellationToken cancellationToken)
         {
-            var encodingJob = await new EncodingJobFactory(Logger, LibraryManager, MediaSourceManager, ConfigurationManager)
+            var encodingJob = await new EncodingJobFactory(Logger, LibraryManager, MediaSourceManager, ConfigurationManager, MediaEncoder)
                 .CreateJob(options, EncodingHelper, IsVideoEncoder, progress, cancellationToken).ConfigureAwait(false);
 
             encodingJob.OutputFilePath = GetOutputFilePath(encodingJob);
-            FileSystem.CreateDirectory(Path.GetDirectoryName(encodingJob.OutputFilePath));
+            FileSystem.CreateDirectory(FileSystem.GetDirectoryName(encodingJob.OutputFilePath));
 
             encodingJob.ReadInputAtNativeFramerate = options.ReadInputAtNativeFramerate;
 
             await AcquireResources(encodingJob, cancellationToken).ConfigureAwait(false);
 
-            var commandLineArgs = await GetCommandLineArguments(encodingJob).ConfigureAwait(false);
+            var commandLineArgs = GetCommandLineArguments(encodingJob);
 
             var process = ProcessFactory.Create(new ProcessOptions
             {
@@ -108,7 +108,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
             Logger.Info(commandLineLogMessage);
 
             var logFilePath = Path.Combine(ConfigurationManager.CommonApplicationPaths.LogDirectoryPath, "transcode-" + Guid.NewGuid() + ".txt");
-            FileSystem.CreateDirectory(Path.GetDirectoryName(logFilePath));
+            FileSystem.CreateDirectory(FileSystem.GetDirectoryName(logFilePath));
 
             // FFMpeg writes debug/error info to stderr. This is useful when debugging so let's put it in the log directory.
             encodingJob.LogFileStream = FileSystem.GetFileStream(logFilePath, FileOpenMode.Create, FileAccessMode.Write, FileShareMode.Read, true);
@@ -242,7 +242,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
         private void OnTranscodeBeginning(EncodingJob job)
         {
-            job.ReportTranscodingProgress(null, null, null, null);
+            job.ReportTranscodingProgress(null, null, null, null, null);
         }
 
         private void OnTranscodeFailedToStart(string path, EncodingJob job)
@@ -265,7 +265,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
             return ConfigurationManager.GetConfiguration<EncodingOptions>("encoding");
         }
 
-        protected abstract Task<string> GetCommandLineArguments(EncodingJob job);
+        protected abstract string GetCommandLineArguments(EncodingJob job);
 
         private string GetOutputFilePath(EncodingJob state)
         {
@@ -350,13 +350,13 @@ namespace MediaBrowser.MediaEncoding.Encoder
                 state.IsoMount = await IsoManager.Mount(state.MediaPath, cancellationToken).ConfigureAwait(false);
             }
 
-            if (state.MediaSource.RequiresOpening && string.IsNullOrWhiteSpace(state.LiveStreamId))
+            if (state.MediaSource.RequiresOpening && string.IsNullOrWhiteSpace(state.Options.LiveStreamId))
             {
                 var liveStreamResponse = await MediaSourceManager.OpenLiveStream(new LiveStreamRequest
                 {
                     OpenToken = state.MediaSource.OpenToken
 
-                }, false, cancellationToken).ConfigureAwait(false);
+                }, cancellationToken).ConfigureAwait(false);
 
                 EncodingHelper.AttachMediaSourceInfo(state, liveStreamResponse.MediaSource, null);
 

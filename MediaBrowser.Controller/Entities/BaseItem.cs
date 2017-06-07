@@ -21,7 +21,8 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using MediaBrowser.Common.IO;
+
+using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Extensions;
 using MediaBrowser.Controller.IO;
 using MediaBrowser.Controller.Sorting;
@@ -84,6 +85,7 @@ namespace MediaBrowser.Controller.Entities
 
         public long? Size { get; set; }
         public string Container { get; set; }
+
         [IgnoreDataMember]
         public string Tagline { get; set; }
 
@@ -185,10 +187,15 @@ namespace MediaBrowser.Controller.Entities
             }
             set
             {
+                var isSortNameDefault = IsSortNameDefault(SortName);
+
                 _name = value;
 
-                // lazy load this again
-                _sortName = null;
+                if (isSortNameDefault)
+                {
+                    // lazy load this again
+                    SortName = null;
+                }
             }
         }
 
@@ -288,7 +295,7 @@ namespace MediaBrowser.Controller.Entities
                     return Path;
                 }
 
-                return System.IO.Path.GetDirectoryName(Path);
+                return FileSystem.GetDirectoryName(Path);
             }
         }
 
@@ -579,7 +586,6 @@ namespace MediaBrowser.Controller.Entities
             }
         }
 
-        private string _forcedSortName;
         /// <summary>
         /// Gets or sets the name of the forced sort.
         /// </summary>
@@ -587,8 +593,42 @@ namespace MediaBrowser.Controller.Entities
         [IgnoreDataMember]
         public string ForcedSortName
         {
-            get { return _forcedSortName; }
-            set { _forcedSortName = value; _sortName = null; }
+            get
+            {
+                var sortName = SortName;
+
+                if (string.IsNullOrWhiteSpace(sortName))
+                {
+                    return null;
+                }
+
+                if (string.Equals(sortName, CreateSortName(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+
+                return sortName;
+            }
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    SortName = null;
+                }
+                else
+                {
+                    var newValue = CreateSortNameFromCustomValue(value);
+
+                    if (string.Equals(newValue, CreateSortName(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        SortName = null;
+                    }
+                    else
+                    {
+                        SortName = newValue;
+                    }
+                }
+            }
         }
 
         private string _sortName;
@@ -603,15 +643,7 @@ namespace MediaBrowser.Controller.Entities
             {
                 if (_sortName == null)
                 {
-                    if (!string.IsNullOrWhiteSpace(ForcedSortName))
-                    {
-                        // Need the ToLower because that's what CreateSortName does
-                        _sortName = ModifySortChunks(ForcedSortName).ToLower();
-                    }
-                    else
-                    {
-                        _sortName = CreateSortName();
-                    }
+                    _sortName = CreateSortName();
                 }
                 return _sortName;
             }
@@ -619,6 +651,31 @@ namespace MediaBrowser.Controller.Entities
             {
                 _sortName = value;
             }
+        }
+
+        private string CreateSortNameFromCustomValue(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? null : NormalizeCustomSortName(value);
+        }
+
+        protected virtual string NormalizeCustomSortName(string value)
+        {
+            if (ConfigurationManager.Configuration.EnableSimpleSortNameHandling)
+            {
+                return value.RemoveDiacritics().ToLower();
+            }
+
+            return ModifySortChunks(value).ToLower();
+        }
+
+        public bool IsSortNameDefault(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return true;
+            }
+
+            return string.Equals(CreateSortNameFromCustomValue(value), CreateSortName(), StringComparison.OrdinalIgnoreCase);
         }
 
         public string GetInternalMetadataPath()
@@ -642,14 +699,22 @@ namespace MediaBrowser.Controller.Entities
             return System.IO.Path.Combine(basePath, idString.Substring(0, 2), idString);
         }
 
+        protected string CreateSortName()
+        {
+            if (string.IsNullOrWhiteSpace(Name))
+            {
+                return null;
+            }
+
+            return CreateSortNameInternal();
+        }
+
         /// <summary>
         /// Creates the name of the sort.
         /// </summary>
         /// <returns>System.String.</returns>
-        protected virtual string CreateSortName()
+        protected virtual string CreateSortNameInternal()
         {
-            if (Name == null) return null; //some items may not have name filled in properly
-
             if (!EnableAlphaNumericSorting)
             {
                 return Name.TrimStart();
@@ -833,20 +898,6 @@ namespace MediaBrowser.Controller.Entities
         /// <value>The critic rating.</value>
         [IgnoreDataMember]
         public float? CriticRating { get; set; }
-
-        /// <summary>
-        /// Gets or sets the critic rating summary.
-        /// </summary>
-        /// <value>The critic rating summary.</value>
-        [IgnoreDataMember]
-        public string CriticRatingSummary { get; set; }
-
-        /// <summary>
-        /// Gets or sets the official rating description.
-        /// </summary>
-        /// <value>The official rating description.</value>
-        [IgnoreDataMember]
-        public string OfficialRatingDescription { get; set; }
 
         /// <summary>
         /// Gets or sets the custom rating.
@@ -1316,7 +1367,6 @@ namespace MediaBrowser.Controller.Entities
 
         public void AfterMetadataRefresh()
         {
-            _sortName = null;
         }
 
         /// <summary>
@@ -1693,7 +1743,7 @@ namespace MediaBrowser.Controller.Entities
 
         private BaseItem FindLinkedChild(LinkedChild info)
         {
-            if (!string.IsNullOrEmpty(info.Path))
+            if (!string.IsNullOrWhiteSpace(info.Path))
             {
                 var itemByPath = LibraryManager.FindByPath(info.Path, null);
 
@@ -1822,10 +1872,13 @@ namespace MediaBrowser.Controller.Entities
         /// Do whatever refreshing is necessary when the filesystem pertaining to this item has changed.
         /// </summary>
         /// <returns>Task.</returns>
-        public virtual Task ChangedExternally()
+        public virtual void ChangedExternally()
         {
-            ProviderManager.QueueRefresh(Id, new MetadataRefreshOptions(FileSystem));
-            return Task.FromResult(true);
+            ProviderManager.QueueRefresh(Id, new MetadataRefreshOptions(FileSystem)
+            {
+                ValidateChildren = true,
+
+            }, RefreshPriority.High);
         }
 
         /// <summary>
@@ -1924,10 +1977,9 @@ namespace MediaBrowser.Controller.Entities
         {
             var allFiles = ImageInfos
                 .Where(i => i.IsLocalFile)
-                .Select(i => System.IO.Path.GetDirectoryName(i.Path))
+                .Select(i => FileSystem.GetDirectoryName(i.Path))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .SelectMany(directoryService.GetFiles)
-                .Select(i => i.FullName)
+                .SelectMany(directoryService.GetFilePaths)
                 .ToList();
 
             var deletedImages = ImageInfos
@@ -2100,8 +2152,8 @@ namespace MediaBrowser.Controller.Entities
             var extensions = new[] { ".nfo", ".xml", ".srt" }.ToList();
             extensions.AddRange(SupportedImageExtensionsList);
 
-            return FileSystem.GetFiles(System.IO.Path.GetDirectoryName(Path))
-                .Where(i => extensions.Contains(i.Extension, StringComparer.OrdinalIgnoreCase) && System.IO.Path.GetFileNameWithoutExtension(i.FullName).StartsWith(filename, StringComparison.OrdinalIgnoreCase))
+            return FileSystem.GetFiles(FileSystem.GetDirectoryName(Path), extensions.ToArray(), false, false)
+                .Where(i => System.IO.Path.GetFileNameWithoutExtension(i.FullName).StartsWith(filename, StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
 
@@ -2201,8 +2253,6 @@ namespace MediaBrowser.Controller.Entities
         /// </summary>
         public virtual bool BeforeMetadataRefresh()
         {
-            _sortName = null;
-
             var hasChanges = false;
 
             if (string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(Path))
@@ -2224,7 +2274,7 @@ namespace MediaBrowser.Controller.Entities
             return path;
         }
 
-        public virtual Task FillUserDataDtoValues(UserItemDataDto dto, UserItemData userData, BaseItemDto itemDto, User user, List<ItemFields> itemFields)
+        public virtual void FillUserDataDtoValues(UserItemDataDto dto, UserItemData userData, BaseItemDto itemDto, User user, List<ItemFields> fields)
         {
             if (RunTimeTicks.HasValue)
             {
@@ -2240,8 +2290,6 @@ namespace MediaBrowser.Controller.Entities
                     }
                 }
             }
-
-            return Task.FromResult(true);
         }
 
         protected Task RefreshMetadataForOwnedItem(BaseItem ownedItem, bool copyTitleMetadata, MetadataRefreshOptions options, CancellationToken cancellationToken)
@@ -2297,16 +2345,6 @@ namespace MediaBrowser.Controller.Entities
                 if (!string.Equals(item.CustomRating, ownedItem.CustomRating, StringComparison.Ordinal))
                 {
                     ownedItem.CustomRating = item.CustomRating;
-                    newOptions.ForceSave = true;
-                }
-                if (!string.Equals(item.CriticRatingSummary, ownedItem.CriticRatingSummary, StringComparison.Ordinal))
-                {
-                    ownedItem.CriticRatingSummary = item.CriticRatingSummary;
-                    newOptions.ForceSave = true;
-                }
-                if (!string.Equals(item.OfficialRatingDescription, ownedItem.OfficialRatingDescription, StringComparison.Ordinal))
-                {
-                    ownedItem.OfficialRatingDescription = item.OfficialRatingDescription;
                     newOptions.ForceSave = true;
                 }
             }

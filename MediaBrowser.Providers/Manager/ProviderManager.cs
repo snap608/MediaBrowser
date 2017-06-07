@@ -20,10 +20,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Model.IO;
-using MediaBrowser.Common.IO;
+
+using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.IO;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Serialization;
+using Priority_Queue;
 
 namespace MediaBrowser.Providers.Manager
 {
@@ -554,6 +556,7 @@ namespace MediaBrowser.Providers.Manager
                 new MetadataOptions();
         }
 
+        private Task _completedTask = Task.FromResult(true);
         /// <summary>
         /// Saves the metadata.
         /// </summary>
@@ -562,7 +565,8 @@ namespace MediaBrowser.Providers.Manager
         /// <returns>Task.</returns>
         public Task SaveMetadata(IHasMetadata item, ItemUpdateType updateType)
         {
-            return SaveMetadata(item, updateType, _savers);
+            SaveMetadata(item, updateType, _savers);
+            return _completedTask;
         }
 
         /// <summary>
@@ -574,10 +578,10 @@ namespace MediaBrowser.Providers.Manager
         /// <returns>Task.</returns>
         public Task SaveMetadata(IHasMetadata item, ItemUpdateType updateType, IEnumerable<string> savers)
         {
-            return SaveMetadata(item, updateType, _savers.Where(i => savers.Contains(i.Name, StringComparer.OrdinalIgnoreCase)));
+            SaveMetadata(item, updateType, _savers.Where(i => savers.Contains(i.Name, StringComparer.OrdinalIgnoreCase)));
+            return _completedTask;
         }
 
-        private readonly SemaphoreSlim _saveLock = new SemaphoreSlim(1, 1);
         /// <summary>
         /// Saves the metadata.
         /// </summary>
@@ -585,7 +589,7 @@ namespace MediaBrowser.Providers.Manager
         /// <param name="updateType">Type of the update.</param>
         /// <param name="savers">The savers.</param>
         /// <returns>Task.</returns>
-        private async Task SaveMetadata(IHasMetadata item, ItemUpdateType updateType, IEnumerable<IMetadataSaver> savers)
+        private void SaveMetadata(IHasMetadata item, ItemUpdateType updateType, IEnumerable<IMetadataSaver> savers)
         {
             foreach (var saver in savers.Where(i => IsSaverEnabledForItem(i, item, updateType, false)))
             {
@@ -607,8 +611,6 @@ namespace MediaBrowser.Providers.Manager
                         continue;
                     }
 
-                    await _saveLock.WaitAsync().ConfigureAwait(false);
-
                     try
                     {
                         _libraryMonitor.ReportFileSystemChangeBeginning(path);
@@ -620,7 +622,6 @@ namespace MediaBrowser.Providers.Manager
                     }
                     finally
                     {
-                        _saveLock.Release();
                         _libraryMonitor.ReportFileSystemChangeComplete(path, false);
                     }
                 }
@@ -851,27 +852,27 @@ namespace MediaBrowser.Providers.Manager
                 });
         }
 
-        private readonly ConcurrentQueue<Tuple<Guid, MetadataRefreshOptions>> _refreshQueue =
-            new ConcurrentQueue<Tuple<Guid, MetadataRefreshOptions>>();
+        private readonly SimplePriorityQueue<Tuple<Guid, MetadataRefreshOptions>> _refreshQueue =
+            new SimplePriorityQueue<Tuple<Guid, MetadataRefreshOptions>>();
 
         private readonly object _refreshQueueLock = new object();
         private bool _isProcessingRefreshQueue;
 
-        public void QueueRefresh(Guid id, MetadataRefreshOptions options)
+        public void QueueRefresh(Guid id, MetadataRefreshOptions options, RefreshPriority priority)
         {
             if (_disposed)
             {
                 return;
             }
 
-            _refreshQueue.Enqueue(new Tuple<Guid, MetadataRefreshOptions>(id, options));
+            _refreshQueue.Enqueue(new Tuple<Guid, MetadataRefreshOptions>(id, options), (int)priority);
 
             lock (_refreshQueueLock)
             {
                 if (!_isProcessingRefreshQueue)
                 {
                     _isProcessingRefreshQueue = true;
-                    Task.Run(() => StartProcessingRefreshQueue());
+                    Task.Run(StartProcessingRefreshQueue);
                 }
             }
         }
@@ -895,6 +896,15 @@ namespace MediaBrowser.Providers.Manager
                     {
                         // Try to throttle this a little bit.
                         await Task.Delay(100).ConfigureAwait(false);
+
+                        if (refreshItem.Item2.ValidateChildren)
+                        {
+                            var folder = item as Folder;
+                            if (folder != null)
+                            {
+                                await folder.ValidateChildren(new Progress<double>(), CancellationToken.None).ConfigureAwait(false);
+                            }
+                        }
 
                         var artist = item as MusicArtist;
                         var task = artist == null
@@ -961,7 +971,11 @@ namespace MediaBrowser.Providers.Manager
                 .GetItemList(new InternalItemsQuery
                 {
                     IncludeItemTypes = new[] { typeof(MusicAlbum).Name },
-                    ArtistIds = new[] { item.Id.ToString("N") }
+                    ArtistIds = new[] { item.Id.ToString("N") },
+                    DtoOptions = new DtoOptions(false)
+                    {
+                        EnableImages = false
+                    }
                 })
                 .OfType<MusicAlbum>()
                 .ToList();

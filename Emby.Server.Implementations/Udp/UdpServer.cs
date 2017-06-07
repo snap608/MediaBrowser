@@ -139,30 +139,58 @@ namespace Emby.Server.Implementations.Udp
         {
             _udpClient = _socketFactory.CreateUdpSocket(port);
 
-            Task.Run(() => StartListening());
+            Task.Run(() => BeginReceive());
         }
 
-        private async void StartListening()
-        {
-            while (!_isDisposed)
-            {
-                try
-                {
-                    var result = await _udpClient.ReceiveAsync(CancellationToken.None).ConfigureAwait(false);
+        private readonly byte[] _receiveBuffer = new byte[8192];
 
-                    OnMessageReceived(result);
-                }
-                catch (ObjectDisposedException)
+        private void BeginReceive()
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            try
+            {
+                var result = _udpClient.BeginReceive(_receiveBuffer, 0, _receiveBuffer.Length, OnReceiveResult);
+
+                if (result.CompletedSynchronously)
                 {
-                }
-                catch (OperationCanceledException)
-                {
-                }
-                catch (Exception ex)
-                {
-                    _logger.ErrorException("Error receiving udp message", ex);
+                    OnReceiveResult(result);
                 }
             }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger.ErrorException("Error receiving udp message", ex);
+            }
+        }
+
+        private void OnReceiveResult(IAsyncResult result)
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+            
+            try
+            {
+                var socketResult = _udpClient.EndReceive(result);
+
+                OnMessageReceived(socketResult);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger.ErrorException("Error receiving udp message", ex);
+            }
+
+            BeginReceive();
         }
 
         /// <summary>
@@ -204,19 +232,6 @@ namespace Emby.Server.Implementations.Udp
         }
 
         /// <summary>
-        /// Stops this instance.
-        /// </summary>
-        public void Stop()
-        {
-            _isDisposed = true;
-
-            if (_udpClient != null)
-            {
-                _udpClient.Dispose();
-            }
-        }
-
-        /// <summary>
         /// Releases unmanaged and - optionally - managed resources.
         /// </summary>
         /// <param name="dispose"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
@@ -224,7 +239,12 @@ namespace Emby.Server.Implementations.Udp
         {
             if (dispose)
             {
-                Stop();
+                _isDisposed = true;
+
+                if (_udpClient != null)
+                {
+                    _udpClient.Dispose();
+                }
             }
         }
 
@@ -247,9 +267,13 @@ namespace Emby.Server.Implementations.Udp
 
             try
             {
-                await _udpClient.SendAsync(bytes, bytes.Length, remoteEndPoint, CancellationToken.None).ConfigureAwait(false);
+                await _udpClient.SendToAsync(bytes, 0, bytes.Length, remoteEndPoint, CancellationToken.None).ConfigureAwait(false);
 
                 _logger.Info("Udp message sent to {0}", remoteEndPoint);
+            }
+            catch (OperationCanceledException)
+            {
+
             }
             catch (Exception ex)
             {

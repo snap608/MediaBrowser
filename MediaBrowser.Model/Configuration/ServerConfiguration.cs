@@ -17,6 +17,8 @@ namespace MediaBrowser.Model.Configuration
         /// <value><c>true</c> if [enable u pn p]; otherwise, <c>false</c>.</value>
         public bool EnableUPnP { get; set; }
 
+        public bool EnableSimpleSortNameHandling { get; set; }
+
         /// <summary>
         /// Gets or sets the public mapped port.
         /// </summary>
@@ -46,14 +48,15 @@ namespace MediaBrowser.Model.Configuration
         /// </summary>
         /// <value><c>true</c> if [use HTTPS]; otherwise, <c>false</c>.</value>
         public bool EnableHttps { get; set; }
-        public bool EnableSeriesPresentationUniqueKey { get; set; }
         public bool EnableLocalizedGuids { get; set; }
+        public bool EnableNormalizedItemByNameIds { get; set; }
 
         /// <summary>
         /// Gets or sets the value pointing to the file system where the ssl certiifcate is located..
         /// </summary>
         /// <value>The value pointing to the file system where the ssl certiifcate is located..</value>
         public string CertificatePath { get; set; }
+        public string CertificatePassword { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether this instance is port authorized.
@@ -67,14 +70,14 @@ namespace MediaBrowser.Model.Configuration
         /// <value><c>true</c> if [enable case sensitive item ids]; otherwise, <c>false</c>.</value>
         public bool EnableCaseSensitiveItemIds { get; set; }
 
+        public bool DisableLiveTvChannelUserDataName { get; set; }
+
         /// <summary>
         /// Gets or sets the metadata path.
         /// </summary>
         /// <value>The metadata path.</value>
         public string MetadataPath { get; set; }
         public string MetadataNetworkPath { get; set; }
-
-        public string LastVersion { get; set; }
 
         /// <summary>
         /// Gets or sets the display name of the season zero.
@@ -161,7 +164,6 @@ namespace MediaBrowser.Model.Configuration
 
         public bool EnableAutomaticRestart { get; set; }
         public bool SkipDeserializationForBasicTypes { get; set; }
-        public bool SkipDeserializationForPrograms { get; set; }
         public bool SkipDeserializationForAudio { get; set; }
 
         public string ServerName { get; set; }
@@ -222,7 +224,6 @@ namespace MediaBrowser.Model.Configuration
             EnableAnonymousUsageReporting = true;
 
             EnableAutomaticRestart = true;
-            EnableFolderView = true;
 
             EnableUPnP = true;
             SharingExpirationDays = 30;

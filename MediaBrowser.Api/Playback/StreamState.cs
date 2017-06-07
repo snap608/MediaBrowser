@@ -60,18 +60,26 @@ namespace MediaBrowser.Api.Playback
         {
             get
             {
+                if (Request.SegmentLength.HasValue)
+                {
+                    return Request.SegmentLength.Value;
+                }
+
                 if (string.Equals(OutputVideoCodec, "copy", StringComparison.OrdinalIgnoreCase))
                 {
                     var userAgent = UserAgent ?? string.Empty;
-                    if (userAgent.IndexOf("AppleTV", StringComparison.OrdinalIgnoreCase) != -1)
-                    {
-                        return 10;
-                    }
-                    if (userAgent.IndexOf("cfnetwork", StringComparison.OrdinalIgnoreCase) != -1 ||
+
+                    if (userAgent.IndexOf("AppleTV", StringComparison.OrdinalIgnoreCase) != -1 ||
+                        userAgent.IndexOf("cfnetwork", StringComparison.OrdinalIgnoreCase) != -1 ||
                         userAgent.IndexOf("ipad", StringComparison.OrdinalIgnoreCase) != -1 ||
                         userAgent.IndexOf("iphone", StringComparison.OrdinalIgnoreCase) != -1 ||
                         userAgent.IndexOf("ipod", StringComparison.OrdinalIgnoreCase) != -1)
                     {
+                        if (IsSegmentedLiveStream)
+                        {
+                            return 6;
+                        }
+
                         return 10;
                     }
 
@@ -86,11 +94,16 @@ namespace MediaBrowser.Api.Playback
             }
         }
 
-        public bool IsSegmentedLiveStream
+        public int MinSegments
         {
             get
             {
-                return TranscodingType != TranscodingJobType.Progressive && !RunTimeTicks.HasValue;
+                if (Request.MinSegments.HasValue)
+                {
+                    return Request.MinSegments.Value;
+                }
+
+                return SegmentLength >= 10 ? 2 : 3;
             }
         }
 
@@ -102,23 +115,18 @@ namespace MediaBrowser.Api.Playback
             }
         }
 
-        public List<string> SupportedSubtitleCodecs { get; set; }
         public string UserAgent { get; set; }
-        public TranscodingJobType TranscodingType { get; set; }
 
         public StreamState(IMediaSourceManager mediaSourceManager, ILogger logger, TranscodingJobType transcodingType) 
-            : base(logger)
+            : base(logger, transcodingType)
         {
             _mediaSourceManager = mediaSourceManager;
             _logger = logger;
-            SupportedSubtitleCodecs = new List<string>();
-            TranscodingType = transcodingType;
         }
 
         public string MimeType { get; set; }
 
         public bool EstimateContentLength { get; set; }
-        public bool EnableMpegtsM2TsMode { get; set; }
         public TranscodeSeekInfo TranscodeSeekInfo { get; set; }
 
         public long? EncodingDurationTicks { get; set; }
@@ -133,12 +141,16 @@ namespace MediaBrowser.Api.Playback
             return MimeTypes.GetMimeType(outputPath);
         }
 
+        public bool EnableDlnaHeaders { get; set; }
+
         public void Dispose()
         {
             DisposeTranscodingThrottler();
             DisposeLiveStream();
             DisposeLogStream();
             DisposeIsoMount();
+
+            TranscodingJob = null;
         }
 
         private void DisposeLogStream()
@@ -191,7 +203,6 @@ namespace MediaBrowser.Api.Playback
         }
 
         public string OutputFilePath { get; set; }
-        public int? OutputAudioBitrate;
 
         public string ActualOutputVideoCodec
         {
@@ -356,6 +367,37 @@ namespace MediaBrowser.Api.Playback
             }
         }
 
+        public bool? IsTargetAnamorphic
+        {
+            get
+            {
+                if (Request.Static)
+                {
+                    return VideoStream == null ? null : VideoStream.IsAnamorphic;
+                }
+
+                return false;
+            }
+        }
+
+        public bool? IsTargetInterlaced
+        {
+            get
+            {
+                if (Request.Static)
+                {
+                    return VideoStream == null ? (bool?)null : VideoStream.IsInterlaced;
+                }
+
+                if (DeInterlace)
+                {
+                    return false;
+                }
+
+                return VideoStream == null ? (bool?)null : VideoStream.IsInterlaced;
+            }
+        }
+
         private int? GetMediaStreamCount(MediaStreamType type, int limit)
         {
             var count = MediaSource.GetStreamCount(type);
@@ -437,19 +479,6 @@ namespace MediaBrowser.Api.Playback
             }
         }
 
-        public bool? IsTargetAnamorphic
-        {
-            get
-            {
-                if (Request.Static)
-                {
-                    return VideoStream == null ? null : VideoStream.IsAnamorphic;
-                }
-
-                return false;
-            }
-        }
-
         public bool? IsTargetAVC
         {
             get
@@ -461,6 +490,12 @@ namespace MediaBrowser.Api.Playback
 
                 return true;
             }
+        }
+
+        public TranscodingJob TranscodingJob;
+        public override void ReportTranscodingProgress(TimeSpan? transcodingPosition, float? framerate, double? percentComplete, long? bytesTranscoded, int? bitRate)
+        {
+            ApiEntryPoint.Instance.ReportTranscodingProgress(TranscodingJob, this, transcodingPosition, framerate, percentComplete, bytesTranscoded, bitRate);
         }
     }
 }

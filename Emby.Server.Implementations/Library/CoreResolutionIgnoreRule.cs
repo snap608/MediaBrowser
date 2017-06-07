@@ -6,7 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using MediaBrowser.Common.IO;
+
 using MediaBrowser.Controller.IO;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Logging;
@@ -79,7 +79,7 @@ namespace Emby.Server.Implementations.Library
             {
                 if (parent == null)
                 {
-                    var parentFolderName = Path.GetFileName(Path.GetDirectoryName(path));
+                    var parentFolderName = Path.GetFileName(_fileSystem.GetDirectoryName(path));
 
                     if (string.Equals(parentFolderName, BaseItem.ThemeSongsFolderName, StringComparison.OrdinalIgnoreCase))
                     {

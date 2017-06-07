@@ -40,7 +40,9 @@ using MediaBrowser.Model.Net;
 using SortOrder = MediaBrowser.Model.Entities.SortOrder;
 using VideoResolver = MediaBrowser.Naming.Video.VideoResolver;
 using MediaBrowser.Common.Configuration;
-using MediaBrowser.Common.IO;
+
+using MediaBrowser.Controller.Dto;
+using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Model.Tasks;
 
 namespace Emby.Server.Implementations.Library
@@ -312,7 +314,8 @@ namespace Emby.Server.Implementations.Library
             {
                 IncludeItemTypes = new[] { typeof(Season).Name },
                 Recursive = true,
-                IndexNumber = 0
+                IndexNumber = 0,
+                DtoOptions = new DtoOptions(true)
 
             }).Cast<Season>()
                 .Where(i => !string.Equals(i.Name, newName, StringComparison.Ordinal))
@@ -341,7 +344,7 @@ namespace Emby.Server.Implementations.Library
             }
             if (item is IItemByName)
             {
-                if (!(item is MusicArtist) && !(item is Studio))
+                if (!(item is MusicArtist))
                 {
                     return;
                 }
@@ -375,11 +378,22 @@ namespace Emby.Server.Implementations.Library
                 throw new ArgumentNullException("item");
             }
 
-            _logger.Debug("Deleting item, Type: {0}, Name: {1}, Path: {2}, Id: {3}",
-                item.GetType().Name,
-                item.Name ?? "Unknown name",
-                item.Path ?? string.Empty,
-                item.Id);
+            if (item is LiveTvProgram)
+            {
+                _logger.Debug("Deleting item, Type: {0}, Name: {1}, Path: {2}, Id: {3}",
+                    item.GetType().Name,
+                    item.Name ?? "Unknown name",
+                    item.Path ?? string.Empty,
+                    item.Id);
+            }
+            else
+            {
+                _logger.Info("Deleting item, Type: {0}, Name: {1}, Path: {2}, Id: {3}",
+                    item.GetType().Name,
+                    item.Name ?? "Unknown name",
+                    item.Path ?? string.Empty,
+                    item.Id);
+            }
 
             var parent = item.Parent;
 
@@ -448,7 +462,7 @@ namespace Emby.Server.Implementations.Library
 
                 if (parent != null)
                 {
-                    await parent.ValidateChildren(new Progress<double>(), CancellationToken.None, new MetadataRefreshOptions(_fileSystem), false) .ConfigureAwait(false);
+                    await parent.ValidateChildren(new Progress<double>(), CancellationToken.None, new MetadataRefreshOptions(_fileSystem), false).ConfigureAwait(false);
                 }
             }
             else if (parent != null)
@@ -514,6 +528,11 @@ namespace Emby.Server.Implementations.Library
 
         public Guid GetNewItemId(string key, Type type)
         {
+            return GetNewItemIdInternal(key, type, false);
+        }
+
+        private Guid GetNewItemIdInternal(string key, Type type, bool forceCaseInsensitive)
+        {
             if (string.IsNullOrWhiteSpace(key))
             {
                 throw new ArgumentNullException("key");
@@ -531,7 +550,7 @@ namespace Emby.Server.Implementations.Library
                     .Replace("/", "\\");
             }
 
-            if (!ConfigurationManager.Configuration.EnableCaseSensitiveItemIds)
+            if (forceCaseInsensitive || !ConfigurationManager.Configuration.EnableCaseSensitiveItemIds)
             {
                 key = key.ToLower();
             }
@@ -845,13 +864,19 @@ namespace Emby.Server.Implementations.Library
             // If this returns multiple items it could be tricky figuring out which one is correct. 
             // In most cases, the newest one will be and the others obsolete but not yet cleaned up
 
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                throw new ArgumentNullException("path");
+            }
+
             var query = new InternalItemsQuery
             {
                 Path = path,
                 IsFolder = isFolder,
                 SortBy = new[] { ItemSortBy.DateCreated },
                 SortOrder = SortOrder.Descending,
-                Limit = 1
+                Limit = 1,
+                DtoOptions = new DtoOptions(true)
             };
 
             return GetItemList(query)
@@ -865,7 +890,7 @@ namespace Emby.Server.Implementations.Library
         /// <returns>Task{Person}.</returns>
         public Person GetPerson(string name)
         {
-            return CreateItemByName<Person>(Person.GetPath(name), name);
+            return CreateItemByName<Person>(Person.GetPath, name, new DtoOptions(true));
         }
 
         /// <summary>
@@ -875,7 +900,27 @@ namespace Emby.Server.Implementations.Library
         /// <returns>Task{Studio}.</returns>
         public Studio GetStudio(string name)
         {
-            return CreateItemByName<Studio>(Studio.GetPath(name), name);
+            return CreateItemByName<Studio>(Studio.GetPath, name, new DtoOptions(true));
+        }
+
+        public Guid GetStudioId(string name)
+        {
+            return GetItemByNameId<Studio>(Studio.GetPath, name);
+        }
+
+        public Guid GetGenreId(string name)
+        {
+            return GetItemByNameId<Genre>(Genre.GetPath, name);
+        }
+
+        public Guid GetMusicGenreId(string name)
+        {
+            return GetItemByNameId<MusicGenre>(MusicGenre.GetPath, name);
+        }
+
+        public Guid GetGameGenreId(string name)
+        {
+            return GetItemByNameId<GameGenre>(GameGenre.GetPath, name);
         }
 
         /// <summary>
@@ -885,7 +930,7 @@ namespace Emby.Server.Implementations.Library
         /// <returns>Task{Genre}.</returns>
         public Genre GetGenre(string name)
         {
-            return CreateItemByName<Genre>(Genre.GetPath(name), name);
+            return CreateItemByName<Genre>(Genre.GetPath, name, new DtoOptions(true));
         }
 
         /// <summary>
@@ -895,7 +940,7 @@ namespace Emby.Server.Implementations.Library
         /// <returns>Task{MusicGenre}.</returns>
         public MusicGenre GetMusicGenre(string name)
         {
-            return CreateItemByName<MusicGenre>(MusicGenre.GetPath(name), name);
+            return CreateItemByName<MusicGenre>(MusicGenre.GetPath, name, new DtoOptions(true));
         }
 
         /// <summary>
@@ -905,7 +950,7 @@ namespace Emby.Server.Implementations.Library
         /// <returns>Task{GameGenre}.</returns>
         public GameGenre GetGameGenre(string name)
         {
-            return CreateItemByName<GameGenre>(GameGenre.GetPath(name), name);
+            return CreateItemByName<GameGenre>(GameGenre.GetPath, name, new DtoOptions(true));
         }
 
         /// <summary>
@@ -923,7 +968,7 @@ namespace Emby.Server.Implementations.Library
 
             var name = value.ToString(CultureInfo.InvariantCulture);
 
-            return CreateItemByName<Year>(Year.GetPath(name), name);
+            return CreateItemByName<Year>(Year.GetPath, name, new DtoOptions(true));
         }
 
         /// <summary>
@@ -933,10 +978,15 @@ namespace Emby.Server.Implementations.Library
         /// <returns>Task{Genre}.</returns>
         public MusicArtist GetArtist(string name)
         {
-            return CreateItemByName<MusicArtist>(MusicArtist.GetPath(name), name);
+            return GetArtist(name, new DtoOptions(true));
         }
 
-        private T CreateItemByName<T>(string path, string name)
+        public MusicArtist GetArtist(string name, DtoOptions options)
+        {
+            return CreateItemByName<MusicArtist>(MusicArtist.GetPath, name, options);
+        }
+
+        private T CreateItemByName<T>(Func<string, string> getPathFn, string name, DtoOptions options)
             where T : BaseItem, new()
         {
             if (typeof(T) == typeof(MusicArtist))
@@ -944,7 +994,8 @@ namespace Emby.Server.Implementations.Library
                 var existing = GetItemList(new InternalItemsQuery
                 {
                     IncludeItemTypes = new[] { typeof(T).Name },
-                    Name = name
+                    Name = name,
+                    DtoOptions = options
 
                 }).Cast<MusicArtist>()
                 .OrderBy(i => i.IsAccessedByName ? 1 : 0)
@@ -957,12 +1008,13 @@ namespace Emby.Server.Implementations.Library
                 }
             }
 
-            var id = GetNewItemId(path, typeof(T));
+            var id = GetItemByNameId<T>(getPathFn, name);
 
             var item = GetItemById(id) as T;
 
             if (item == null)
             {
+                var path = getPathFn(name);
                 item = new T
                 {
                     Name = name,
@@ -979,52 +1031,12 @@ namespace Emby.Server.Implementations.Library
             return item;
         }
 
-        public IEnumerable<MusicArtist> GetAlbumArtists(IEnumerable<IHasAlbumArtist> items)
+        private Guid GetItemByNameId<T>(Func<string, string> getPathFn, string name)
+              where T : BaseItem, new()
         {
-            var names = items
-                .SelectMany(i => i.AlbumArtists)
-                .DistinctNames()
-                .Select(i =>
-                {
-                    try
-                    {
-                        var artist = GetArtist(i);
-
-                        return artist;
-                    }
-                    catch
-                    {
-                        // Already logged at lower levels
-                        return null;
-                    }
-                })
-                .Where(i => i != null);
-
-            return names;
-        }
-
-        public IEnumerable<MusicArtist> GetArtists(IEnumerable<IHasArtist> items)
-        {
-            var names = items
-                .SelectMany(i => i.AllArtists)
-                .DistinctNames()
-                .Select(i =>
-                {
-                    try
-                    {
-                        var artist = GetArtist(i);
-
-                        return artist;
-                    }
-                    catch
-                    {
-                        // Already logged at lower levels
-                        return null;
-                    }
-                })
-                .Where(i => i != null);
-
-            return names;
+            var path = getPathFn(name);
+            var forceCaseInsensitiveId = ConfigurationManager.Configuration.EnableNormalizedItemByNameIds;
+            return GetNewItemIdInternal(path, typeof(T), forceCaseInsensitiveId);
         }
 
         /// <summary>
@@ -1079,12 +1091,6 @@ namespace Emby.Server.Implementations.Library
             try
             {
                 await PerformLibraryValidation(progress, cancellationToken).ConfigureAwait(false);
-
-                if (!ConfigurationManager.Configuration.EnableSeriesPresentationUniqueKey)
-                {
-                    ConfigurationManager.Configuration.EnableSeriesPresentationUniqueKey = true;
-                    ConfigurationManager.SaveConfiguration();
-                }
             }
             finally
             {
@@ -1178,6 +1184,7 @@ namespace Emby.Server.Implementations.Library
                 catch (OperationCanceledException)
                 {
                     _logger.Info("Post-scan task cancelled: {0}", task.GetType().Name);
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -1248,10 +1255,9 @@ namespace Emby.Server.Implementations.Library
 
         private string GetCollectionType(string path)
         {
-            return _fileSystem.GetFiles(path, false)
-                .Where(i => string.Equals(i.Extension, ".collection", StringComparison.OrdinalIgnoreCase))
+            return _fileSystem.GetFilePaths(path, new[] { ".collection" }, true, false)
                 .Select(i => _fileSystem.GetFileNameWithoutExtension(i))
-                .FirstOrDefault();
+                .FirstOrDefault(i => !string.IsNullOrWhiteSpace(i));
         }
 
         /// <summary>
@@ -1539,7 +1545,7 @@ namespace Emby.Server.Implementations.Library
                 }
             }
 
-            query.ParentId = null;
+            query.Parent = null;
         }
 
         private void AddUserToQuery(InternalItemsQuery query, User user)
@@ -1944,8 +1950,34 @@ namespace Emby.Server.Implementations.Library
                 return new List<Folder>();
             }
 
-            return GetUserRootFolder().Children
-                .OfType<Folder>()
+            return GetCollectionFoldersInternal(item, GetUserRootFolder().Children.OfType<Folder>().ToList());
+        }
+
+        public List<Folder> GetCollectionFolders(BaseItem item, List<Folder> allUserRootChildren)
+        {
+            while (item != null)
+            {
+                var parent = item.GetParent();
+
+                if (parent == null || parent is AggregateFolder)
+                {
+                    break;
+                }
+
+                item = parent;
+            }
+
+            if (item == null)
+            {
+                return new List<Folder>();
+            }
+
+            return GetCollectionFoldersInternal(item, allUserRootChildren);
+        }
+
+        private List<Folder> GetCollectionFoldersInternal(BaseItem item, List<Folder> allUserRootChildren)
+        {
+            return allUserRootChildren
                 .Where(i => string.Equals(i.Path, item.Path, StringComparison.OrdinalIgnoreCase) || i.PhysicalLocations.Contains(item.Path, StringComparer.OrdinalIgnoreCase))
                 .ToList();
         }
@@ -2108,7 +2140,8 @@ namespace Emby.Server.Implementations.Library
                     // Not sure why this is necessary but need to figure it out
                     // View images are not getting utilized without this
                     ForceSave = true
-                });
+
+                }, RefreshPriority.Normal);
             }
 
             return item;
@@ -2170,7 +2203,8 @@ namespace Emby.Server.Implementations.Library
                 {
                     // Need to force save to increment DateLastSaved
                     ForceSave = true
-                });
+
+                }, RefreshPriority.Normal);
             }
 
             return item;
@@ -2234,7 +2268,8 @@ namespace Emby.Server.Implementations.Library
                 {
                     // Need to force save to increment DateLastSaved
                     ForceSave = true
-                });
+
+                }, RefreshPriority.Normal);
             }
 
             return item;
@@ -2310,7 +2345,7 @@ namespace Emby.Server.Implementations.Library
                 {
                     // Need to force save to increment DateLastSaved
                     ForceSave = true
-                });
+                }, RefreshPriority.Normal);
             }
 
             return item;
@@ -2467,29 +2502,36 @@ namespace Emby.Server.Implementations.Library
             return GetNamingOptions(new LibraryOptions());
         }
 
+        private NamingOptions _namingOptions;
+        private string[] _videoFileExtensions;
         public NamingOptions GetNamingOptions(LibraryOptions libraryOptions)
         {
-            var options = new ExtendedNamingOptions();
-
-            // These cause apps to have problems
-            options.AudioFileExtensions.Remove(".m3u");
-            options.AudioFileExtensions.Remove(".wpl");
-
-            if (!libraryOptions.EnableArchiveMediaFiles)
+            if (_namingOptions == null)
             {
-                options.AudioFileExtensions.Remove(".rar");
-                options.AudioFileExtensions.Remove(".zip");
+                var options = new ExtendedNamingOptions();
+
+                // These cause apps to have problems
+                options.AudioFileExtensions.Remove(".m3u");
+                options.AudioFileExtensions.Remove(".wpl");
+
+                //if (!libraryOptions.EnableArchiveMediaFiles)
+                {
+                    options.AudioFileExtensions.Remove(".rar");
+                    options.AudioFileExtensions.Remove(".zip");
+                }
+
+                //if (!libraryOptions.EnableArchiveMediaFiles)
+                {
+                    options.VideoFileExtensions.Remove(".rar");
+                    options.VideoFileExtensions.Remove(".zip");
+                }
+
+                options.VideoFileExtensions.Add(".tp");
+                _namingOptions = options;
+                _videoFileExtensions = _namingOptions.VideoFileExtensions.ToArray();
             }
 
-            if (!libraryOptions.EnableArchiveMediaFiles)
-            {
-                options.VideoFileExtensions.Remove(".rar");
-                options.VideoFileExtensions.Remove(".zip");
-            }
-
-            options.VideoFileExtensions.Add(".tp");
-
-            return options;
+            return _namingOptions;
         }
 
         public ItemLookupInfo ParseName(string name)
@@ -2508,12 +2550,14 @@ namespace Emby.Server.Implementations.Library
 
         public IEnumerable<Video> FindTrailers(BaseItem owner, List<FileSystemMetadata> fileSystemChildren, IDirectoryService directoryService)
         {
+            var namingOptions = GetNamingOptions();
+
             var files = owner.DetectIsInMixedFolder() ? new List<FileSystemMetadata>() : fileSystemChildren.Where(i => i.IsDirectory)
                 .Where(i => string.Equals(i.Name, BaseItem.TrailerFolderName, StringComparison.OrdinalIgnoreCase))
-                .SelectMany(i => _fileSystem.GetFiles(i.FullName, false))
+                .SelectMany(i => _fileSystem.GetFiles(i.FullName, _videoFileExtensions, false, false))
                 .ToList();
 
-            var videoListResolver = new VideoListResolver(GetNamingOptions(), new NullLogger());
+            var videoListResolver = new VideoListResolver(namingOptions, new NullLogger());
 
             var videos = videoListResolver.Resolve(fileSystemChildren);
 
@@ -2550,16 +2594,18 @@ namespace Emby.Server.Implementations.Library
                 }).OrderBy(i => i.Path).ToList();
         }
 
-        private static readonly string[] ExtrasSubfolderNames = new[] { "extras", "specials", "shorts", "scenes", "featurettes", "behind the scenes", "deleted scenes" };
+        private static readonly string[] ExtrasSubfolderNames = new[] { "extras", "specials", "shorts", "scenes", "featurettes", "behind the scenes", "deleted scenes", "interviews" };
 
         public IEnumerable<Video> FindExtras(BaseItem owner, List<FileSystemMetadata> fileSystemChildren, IDirectoryService directoryService)
         {
+            var namingOptions = GetNamingOptions();
+
             var files = fileSystemChildren.Where(i => i.IsDirectory)
                 .Where(i => ExtrasSubfolderNames.Contains(i.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase))
-                .SelectMany(i => _fileSystem.GetFiles(i.FullName, false))
+                .SelectMany(i => _fileSystem.GetFiles(i.FullName, _videoFileExtensions, false, false))
                 .ToList();
 
-            var videoListResolver = new VideoListResolver(GetNamingOptions(), new NullLogger());
+            var videoListResolver = new VideoListResolver(namingOptions, new NullLogger());
 
             var videos = videoListResolver.Resolve(fileSystemChildren);
 

@@ -16,11 +16,6 @@
         AlternateEpisodeNumbers,
 
         /// <summary>
-        /// The awards summary
-        /// </summary>
-        AwardSummary,
-
-        /// <summary>
         /// The can delete
         /// </summary>
         CanDelete,
@@ -41,11 +36,6 @@
         Chapters,
 
         ChildCount,
-
-        /// <summary>
-        /// The critic rating summary
-        /// </summary>
-        CriticRatingSummary,
 
         /// <summary>
         /// The cumulative run time ticks
@@ -122,13 +112,6 @@
         /// </summary>
         MediaSources,
 
-        /// <summary>
-        /// The metascore
-        /// </summary>
-        Metascore,
-
-        OfficialRatingDescription,
-
         OriginalTitle,
 
         /// <summary>
@@ -169,11 +152,6 @@
         PrimaryImageAspectRatio,
 
         RecursiveItemCount,
-
-        /// <summary>
-        /// The season name
-        /// </summary>
-        SeasonName,
 
         /// <summary>
         /// The settings
@@ -253,6 +231,13 @@
         /// </summary>
         ServiceName,
         ThemeSongIds,
-        ThemeVideoIds
+        ThemeVideoIds,
+        ExternalEtag,
+        PresentationUniqueKey,
+        InheritedParentalRatingValue,
+        ExternalSeriesId,
+        SeriesPresentationUniqueKey,
+        DateLastRefreshed,
+        DateLastSaved
     }
 }

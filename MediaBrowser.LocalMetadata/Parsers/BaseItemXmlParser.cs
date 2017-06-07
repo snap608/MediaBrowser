@@ -207,37 +207,6 @@ namespace MediaBrowser.LocalMetadata.Parsers
                         break;
                     }
 
-                case "Metascore":
-                    {
-                        var text = reader.ReadElementContentAsString();
-                        var hasMetascore = item as IHasMetascore;
-                        if (hasMetascore != null)
-                        {
-                            float value;
-                            if (float.TryParse(text, NumberStyles.Any, _usCulture, out value))
-                            {
-                                hasMetascore.Metascore = value;
-                            }
-                        }
-
-                        break;
-                    }
-
-                case "AwardSummary":
-                    {
-                        var text = reader.ReadElementContentAsString();
-                        var hasAwards = item as IHasAwards;
-                        if (hasAwards != null)
-                        {
-                            if (!string.IsNullOrWhiteSpace(text))
-                            {
-                                hasAwards.AwardSummary = text;
-                            }
-                        }
-
-                        break;
-                    }
-
                 case "SortTitle":
                     {
                         var val = reader.ReadElementContentAsString();
@@ -257,18 +226,6 @@ namespace MediaBrowser.LocalMetadata.Parsers
                         if (!string.IsNullOrWhiteSpace(val))
                         {
                             item.Overview = val;
-                        }
-
-                        break;
-                    }
-
-                case "CriticRatingSummary":
-                    {
-                        var val = reader.ReadElementContentAsString();
-
-                        if (!string.IsNullOrWhiteSpace(val))
-                        {
-                            item.CriticRatingSummary = val;
                         }
 
                         break;
@@ -389,17 +346,6 @@ namespace MediaBrowser.LocalMetadata.Parsers
                         if (!string.IsNullOrWhiteSpace(rating))
                         {
                             item.OfficialRating = rating;
-                        }
-                        break;
-                    }
-
-                case "MPAADescription":
-                    {
-                        var rating = reader.ReadElementContentAsString();
-
-                        if (!string.IsNullOrWhiteSpace(rating))
-                        {
-                            item.OfficialRatingDescription = rating;
                         }
                         break;
                     }

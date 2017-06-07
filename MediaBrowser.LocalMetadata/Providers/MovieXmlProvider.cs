@@ -4,7 +4,7 @@ using MediaBrowser.LocalMetadata.Parsers;
 using MediaBrowser.Model.Logging;
 using System.IO;
 using System.Threading;
-using MediaBrowser.Common.IO;
+
 using MediaBrowser.Controller.IO;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Xml;
@@ -39,7 +39,7 @@ namespace MediaBrowser.LocalMetadata.Providers
         {
             var fileInfo = fileSystem.GetFileSystemInfo(info.Path);
 
-            var directoryInfo = fileInfo.IsDirectory ? fileInfo : fileSystem.GetDirectoryInfo(Path.GetDirectoryName(info.Path));
+            var directoryInfo = fileInfo.IsDirectory ? fileInfo : fileSystem.GetDirectoryInfo(fileSystem.GetDirectoryName(info.Path));
 
             var directoryPath = directoryInfo.FullName;
 

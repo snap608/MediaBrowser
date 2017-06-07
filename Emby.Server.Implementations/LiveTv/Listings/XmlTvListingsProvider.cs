@@ -86,7 +86,7 @@ namespace Emby.Server.Implementations.LiveTv.Listings
 
             }).ConfigureAwait(false);
 
-            _fileSystem.CreateDirectory(Path.GetDirectoryName(cacheFile));
+            _fileSystem.CreateDirectory(_fileSystem.GetDirectoryName(cacheFile));
 
             using (var stream = _fileSystem.OpenRead(tempFile))
             {
@@ -205,6 +205,15 @@ namespace Emby.Server.Implementations.LiveTv.Listings
                 }
 
                 programInfo.ShowId = uniqueString.GetMD5().ToString("N");
+
+                // If we don't have valid episode info, assume it's a unique program, otherwise recordings might be skipped
+                if (programInfo.IsSeries && !programInfo.IsRepeat)
+                {
+                    if ((programInfo.EpisodeNumber ?? 0) == 0)
+                    {
+                        programInfo.ShowId = programInfo.ShowId + programInfo.StartDate.Ticks.ToString(CultureInfo.InvariantCulture);
+                    }
+                }
             }
 
             // Construct an id from the channel and start date
@@ -259,12 +268,12 @@ namespace Emby.Server.Implementations.LiveTv.Listings
             var results = reader.GetChannels();
 
             // Should this method be async?
-            return results.Select(c => new ChannelInfo()
+            return results.Select(c => new ChannelInfo
             {
                 Id = c.Id,
                 Name = c.DisplayName,
                 ImageUrl = c.Icon != null && !String.IsNullOrEmpty(c.Icon.Source) ? c.Icon.Source : null,
-                Number = c.Id
+                Number = string.IsNullOrWhiteSpace(c.Number) ? c.Id : c.Number
 
             }).ToList();
         }

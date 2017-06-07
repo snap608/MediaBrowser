@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Emby.Server.Implementations.HttpServer;
 using Emby.Server.Implementations.HttpServer.SocketSharp;
@@ -52,6 +53,7 @@ namespace Emby.Server.Implementations.HttpServer
         private readonly ISocketFactory _socketFactory;
         private readonly ICryptoProvider _cryptoProvider;
 
+        private readonly IFileSystem _fileSystem;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IXmlSerializer _xmlSerializer;
         private readonly ICertificate _certificate;
@@ -70,8 +72,7 @@ namespace Emby.Server.Implementations.HttpServer
             ILogger logger,
             IServerConfigurationManager config,
             string serviceName,
-            string defaultRedirectPath, INetworkManager networkManager, IMemoryStreamFactory memoryStreamProvider, ITextEncoding textEncoding, ISocketFactory socketFactory, ICryptoProvider cryptoProvider, IJsonSerializer jsonSerializer, IXmlSerializer xmlSerializer, IEnvironmentInfo environment, ICertificate certificate, IStreamFactory streamFactory, Func<Type, Func<string, object>> funcParseFn, bool enableDualModeSockets)
-            : base()
+            string defaultRedirectPath, INetworkManager networkManager, IMemoryStreamFactory memoryStreamProvider, ITextEncoding textEncoding, ISocketFactory socketFactory, ICryptoProvider cryptoProvider, IJsonSerializer jsonSerializer, IXmlSerializer xmlSerializer, IEnvironmentInfo environment, ICertificate certificate, IStreamFactory streamFactory, Func<Type, Func<string, object>> funcParseFn, bool enableDualModeSockets, IFileSystem fileSystem)
         {
             Instance = this;
 
@@ -89,6 +90,7 @@ namespace Emby.Server.Implementations.HttpServer
             _streamFactory = streamFactory;
             _funcParseFn = funcParseFn;
             _enableDualModeSockets = enableDualModeSockets;
+            _fileSystem = fileSystem;
             _config = config;
 
             _logger = logger;
@@ -226,7 +228,9 @@ namespace Emby.Server.Implementations.HttpServer
                 _cryptoProvider,
                 _streamFactory,
                 _enableDualModeSockets,
-                GetRequest);
+                GetRequest,
+                _fileSystem,
+                _environment);
         }
 
         private IHttpRequest GetRequest(HttpListenerContext httpContext)
@@ -271,10 +275,19 @@ namespace Emby.Server.Implementations.HttpServer
                 return 400;
             }
 
+            var exceptionType = ex.GetType();
+
             int statusCode;
-            if (!_mapExceptionToStatusCode.TryGetValue(ex.GetType(), out statusCode))
+            if (!_mapExceptionToStatusCode.TryGetValue(exceptionType, out statusCode))
             {
-                statusCode = 500;
+                if (string.Equals(exceptionType.Name, "DirectoryNotFoundException", StringComparison.OrdinalIgnoreCase))
+                {
+                    statusCode = 404;
+                }
+                else
+                {
+                    statusCode = 500;
+                }
             }
 
             return statusCode;
@@ -433,14 +446,12 @@ namespace Emby.Server.Implementations.HttpServer
         /// <summary>
         /// Overridable method that can be used to implement a custom hnandler
         /// </summary>
-        /// <param name="httpReq">The HTTP req.</param>
-        /// <param name="url">The URL.</param>
-        /// <returns>Task.</returns>
-        protected async Task RequestHandler(IHttpRequest httpReq, Uri url)
+        protected async Task RequestHandler(IHttpRequest httpReq, Uri url, CancellationToken cancellationToken)
         {
             var date = DateTime.Now;
             var httpRes = httpReq.Response;
             bool enableLog = false;
+            bool logHeaders = false;
             string urlToLog = null;
             string remoteIp = null;
 
@@ -479,13 +490,14 @@ namespace Emby.Server.Implementations.HttpServer
                 var urlString = url.OriginalString;
                 enableLog = EnableLogging(urlString, localPath);
                 urlToLog = urlString;
+                 logHeaders = enableLog && urlToLog.IndexOf("/videos/", StringComparison.OrdinalIgnoreCase) != -1;
 
                 if (enableLog)
                 {
                     urlToLog = GetUrlToLog(urlString);
                     remoteIp = httpReq.RemoteIp;
 
-                    LoggerUtils.LogRequest(_logger, urlToLog, httpReq.HttpMethod, httpReq.UserAgent);
+                    LoggerUtils.LogRequest(_logger, urlToLog, httpReq.HttpMethod, httpReq.UserAgent, logHeaders ? httpReq.Headers : null);
                 }
 
                 if (string.Equals(localPath, "/emby/", StringComparison.OrdinalIgnoreCase) ||
@@ -575,7 +587,7 @@ namespace Emby.Server.Implementations.HttpServer
 
                 if (handler != null)
                 {
-                    await handler.ProcessRequestAsync(this, httpReq, httpRes, Logger, operationName).ConfigureAwait(false);
+                    await handler.ProcessRequestAsync(this, httpReq, httpRes, Logger, operationName, cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
@@ -600,7 +612,7 @@ namespace Emby.Server.Implementations.HttpServer
 
                     var duration = DateTime.Now - date;
 
-                    LoggerUtils.LogResponse(_logger, statusCode, urlToLog, remoteIp, duration);
+                    LoggerUtils.LogResponse(_logger, statusCode, urlToLog, remoteIp, duration, logHeaders ? httpRes.Headers : null);
                 }
             }
         }

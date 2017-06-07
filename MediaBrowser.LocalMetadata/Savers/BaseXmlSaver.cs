@@ -35,7 +35,6 @@ namespace MediaBrowser.LocalMetadata.Savers
                     "AspectRatio",
                     "AudioDbAlbumId",
                     "AudioDbArtistId",
-                    "AwardSummary",
                     "BirthDate",
                     
                     // Deprecated. No longer saving in this field.
@@ -46,7 +45,6 @@ namespace MediaBrowser.LocalMetadata.Savers
                     "Countries",
                     "CustomRating",
                     "CriticRating",
-                    "CriticRatingSummary",
                     "DeathDate",
                     "DisplayOrder",
                     "EndDate",
@@ -68,12 +66,9 @@ namespace MediaBrowser.LocalMetadata.Savers
                     "LockData",
                     "LockedFields",
                     "Format3D",
-                    "Metascore",
                     
                     // Deprecated. No longer saving in this field.
                     "MPAARating",
-
-                    "MPAADescription",
 
                     "MusicBrainzArtistId",
                     "MusicBrainzAlbumArtistId",
@@ -211,7 +206,7 @@ namespace MediaBrowser.LocalMetadata.Savers
 
         private void SaveToFile(Stream stream, string path)
         {
-            FileSystem.CreateDirectory(Path.GetDirectoryName(path));
+            FileSystem.CreateDirectory(FileSystem.GetDirectoryName(path));
 
             var file = FileSystem.GetFileInfo(path);
 
@@ -222,13 +217,9 @@ namespace MediaBrowser.LocalMetadata.Savers
             {
                 if (file.IsHidden)
                 {
-                    FileSystem.SetHidden(path, false);
                     wasHidden = true;
                 }
-                if (file.IsReadOnly)
-                {
-                    FileSystem.SetReadOnly(path, false);
-                }
+                FileSystem.SetAttributes(path, false, false);
             }
 
             using (var filestream = FileSystem.GetFileStream(path, FileOpenMode.Create, FileAccessMode.Write, FileShareMode.Read))
@@ -310,11 +301,6 @@ namespace MediaBrowser.LocalMetadata.Savers
                 writer.WriteElementString("ContentRating", item.OfficialRating);
             }
 
-            if (!string.IsNullOrEmpty(item.OfficialRatingDescription))
-            {
-                writer.WriteElementString("MPAADescription", item.OfficialRatingDescription);
-            }
-
             writer.WriteElementString("Added", item.DateCreated.ToLocalTime().ToString("G"));
 
             writer.WriteElementString("LockData", item.IsLocked.ToString().ToLower());
@@ -332,11 +318,6 @@ namespace MediaBrowser.LocalMetadata.Savers
             if (item.CriticRating.HasValue)
             {
                 writer.WriteElementString("CriticRating", item.CriticRating.Value.ToString(UsCulture));
-            }
-
-            if (!string.IsNullOrEmpty(item.CriticRatingSummary))
-            {
-                writer.WriteElementString("CriticRatingSummary", item.CriticRatingSummary);
             }
 
             if (!string.IsNullOrEmpty(item.Overview))
@@ -358,9 +339,10 @@ namespace MediaBrowser.LocalMetadata.Savers
                 writer.WriteElementString("LocalTitle", item.Name);
             }
 
-            if (!string.IsNullOrEmpty(item.ForcedSortName))
+            var forcedSortName = item.ForcedSortName;
+            if (!string.IsNullOrEmpty(forcedSortName))
             {
-                writer.WriteElementString("SortTitle", item.ForcedSortName);
+                writer.WriteElementString("SortTitle", forcedSortName);
             }
 
             if (item.PremiereDate.HasValue)
@@ -419,18 +401,6 @@ namespace MediaBrowser.LocalMetadata.Savers
             if (hasDisplayOrder != null && !string.IsNullOrEmpty(hasDisplayOrder.DisplayOrder))
             {
                 writer.WriteElementString("DisplayOrder", hasDisplayOrder.DisplayOrder);
-            }
-
-            var hasMetascore = item as IHasMetascore;
-            if (hasMetascore != null && hasMetascore.Metascore.HasValue)
-            {
-                writer.WriteElementString("Metascore", hasMetascore.Metascore.Value.ToString(UsCulture));
-            }
-
-            var hasAwards = item as IHasAwards;
-            if (hasAwards != null && !string.IsNullOrEmpty(hasAwards.AwardSummary))
-            {
-                writer.WriteElementString("AwardSummary", hasAwards.AwardSummary);
             }
 
             if (item.CommunityRating.HasValue)

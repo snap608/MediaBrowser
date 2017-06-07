@@ -169,7 +169,7 @@ namespace MediaBrowser.Api.Playback
                 {
                     OpenToken = state.MediaSource.OpenToken
 
-                }, false, cancellationTokenSource.Token).ConfigureAwait(false);
+                }, cancellationTokenSource.Token).ConfigureAwait(false);
 
                 EncodingHelper.AttachMediaSourceInfo(state, liveStreamResponse.MediaSource, state.RequestedUrl);
 
@@ -198,7 +198,7 @@ namespace MediaBrowser.Api.Playback
             CancellationTokenSource cancellationTokenSource,
             string workingDirectory = null)
         {
-            FileSystem.CreateDirectory(Path.GetDirectoryName(outputPath));
+            FileSystem.CreateDirectory(FileSystem.GetDirectoryName(outputPath));
 
             await AcquireResources(state, cancellationTokenSource).ConfigureAwait(false);
 
@@ -263,7 +263,7 @@ namespace MediaBrowser.Api.Playback
             }
 
             var logFilePath = Path.Combine(ServerConfigurationManager.ApplicationPaths.LogDirectoryPath, logFilePrefix + "-" + Guid.NewGuid() + ".txt");
-            FileSystem.CreateDirectory(Path.GetDirectoryName(logFilePath));
+            FileSystem.CreateDirectory(FileSystem.GetDirectoryName(logFilePath));
 
             // FFMpeg writes debug/error info to stderr. This is useful when debugging so let's put it in the log directory.
             state.LogFileStream = FileSystem.GetFileStream(logFilePath, FileOpenMode.Create, FileAccessMode.Write, FileShareMode.Read, true);
@@ -289,8 +289,10 @@ namespace MediaBrowser.Api.Playback
             // MUST read both stdout and stderr asynchronously or a deadlock may occurr
             //process.BeginOutputReadLine();
 
+            state.TranscodingJob = transcodingJob;
+
             // Important - don't await the log task or we won't be able to kill ffmpeg when the user stops playback
-            var task = Task.Run(() => StartStreamingLog(transcodingJob, state, process.StandardError.BaseStream, state.LogFileStream));
+            new JobLogger(Logger).StartStreamingLog(state, process.StandardError.BaseStream, state.LogFileStream);
 
             // Wait for the file to exist before proceeeding
             while (!FileSystem.FileExists(state.WaitForPath ?? outputPath) && !transcodingJob.HasExited)
@@ -312,8 +314,6 @@ namespace MediaBrowser.Api.Playback
             {
                 StartThrottler(state, transcodingJob);
             }
-
-            ReportUsage(state);
 
             return transcodingJob;
         }
@@ -338,134 +338,6 @@ namespace MediaBrowser.Api.Playback
             //    state.VideoType == VideoType.VideoFile &&
             //    !string.Equals(state.OutputVideoCodec, "copy", StringComparison.OrdinalIgnoreCase) &&
             //    string.Equals(GetVideoEncoder(state), "libx264", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private async Task StartStreamingLog(TranscodingJob transcodingJob, StreamState state, Stream source, Stream target)
-        {
-            try
-            {
-                using (var reader = new StreamReader(source))
-                {
-                    while (!reader.EndOfStream)
-                    {
-                        var line = await reader.ReadLineAsync().ConfigureAwait(false);
-
-                        ParseLogLine(line, transcodingJob, state);
-
-                        var bytes = Encoding.UTF8.GetBytes(Environment.NewLine + line);
-
-                        await target.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
-                        await target.FlushAsync().ConfigureAwait(false);
-                    }
-                }
-            }
-            catch (ObjectDisposedException)
-            {
-                // Don't spam the log. This doesn't seem to throw in windows, but sometimes under linux
-            }
-            catch (Exception ex)
-            {
-                Logger.ErrorException("Error reading ffmpeg log", ex);
-            }
-        }
-
-        private void ParseLogLine(string line, TranscodingJob transcodingJob, StreamState state)
-        {
-            float? framerate = null;
-            double? percent = null;
-            TimeSpan? transcodingPosition = null;
-            long? bytesTranscoded = null;
-            int? bitRate = null;
-
-            var parts = line.Split(' ');
-
-            var totalMs = state.RunTimeTicks.HasValue
-                ? TimeSpan.FromTicks(state.RunTimeTicks.Value).TotalMilliseconds
-                : 0;
-
-            var startMs = state.Request.StartTimeTicks.HasValue
-                ? TimeSpan.FromTicks(state.Request.StartTimeTicks.Value).TotalMilliseconds
-                : 0;
-
-            for (var i = 0; i < parts.Length; i++)
-            {
-                var part = parts[i];
-
-                if (string.Equals(part, "fps=", StringComparison.OrdinalIgnoreCase) &&
-                    (i + 1 < parts.Length))
-                {
-                    var rate = parts[i + 1];
-                    float val;
-
-                    if (float.TryParse(rate, NumberStyles.Any, UsCulture, out val))
-                    {
-                        framerate = val;
-                    }
-                }
-                else if (state.RunTimeTicks.HasValue &&
-                    part.StartsWith("time=", StringComparison.OrdinalIgnoreCase))
-                {
-                    var time = part.Split(new[] { '=' }, 2).Last();
-                    TimeSpan val;
-
-                    if (TimeSpan.TryParse(time, UsCulture, out val))
-                    {
-                        var currentMs = startMs + val.TotalMilliseconds;
-
-                        var percentVal = currentMs / totalMs;
-                        percent = 100 * percentVal;
-
-                        transcodingPosition = val;
-                    }
-                }
-                else if (part.StartsWith("size=", StringComparison.OrdinalIgnoreCase))
-                {
-                    var size = part.Split(new[] { '=' }, 2).Last();
-
-                    int? scale = null;
-                    if (size.IndexOf("kb", StringComparison.OrdinalIgnoreCase) != -1)
-                    {
-                        scale = 1024;
-                        size = size.Replace("kb", string.Empty, StringComparison.OrdinalIgnoreCase);
-                    }
-
-                    if (scale.HasValue)
-                    {
-                        long val;
-
-                        if (long.TryParse(size, NumberStyles.Any, UsCulture, out val))
-                        {
-                            bytesTranscoded = val * scale.Value;
-                        }
-                    }
-                }
-                else if (part.StartsWith("bitrate=", StringComparison.OrdinalIgnoreCase))
-                {
-                    var rate = part.Split(new[] { '=' }, 2).Last();
-
-                    int? scale = null;
-                    if (rate.IndexOf("kbits/s", StringComparison.OrdinalIgnoreCase) != -1)
-                    {
-                        scale = 1024;
-                        rate = rate.Replace("kbits/s", string.Empty, StringComparison.OrdinalIgnoreCase);
-                    }
-
-                    if (scale.HasValue)
-                    {
-                        float val;
-
-                        if (float.TryParse(rate, NumberStyles.Any, UsCulture, out val))
-                        {
-                            bitRate = (int)Math.Ceiling(val * scale.Value);
-                        }
-                    }
-                }
-            }
-
-            if (framerate.HasValue || percent.HasValue)
-            {
-                ApiEntryPoint.Instance.ReportTranscodingProgress(transcodingJob, state, transcodingPosition, framerate, percent, bytesTranscoded, bitRate);
-            }
         }
 
         /// <summary>
@@ -697,6 +569,20 @@ namespace MediaBrowser.Api.Playback
                 {
                     request.SubtitleCodec = val;
                 }
+                else if (i == 31)
+                {
+                    if (videoRequest != null)
+                    {
+                        videoRequest.RequireNonAnamorphic = string.Equals("true", val, StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+                else if (i == 32)
+                {
+                    if (videoRequest != null)
+                    {
+                        videoRequest.DeInterlace = string.Equals("true", val, StringComparison.OrdinalIgnoreCase);
+                    }
+                }
             }
         }
 
@@ -785,11 +671,15 @@ namespace MediaBrowser.Api.Playback
                 request.AudioCodec = EncodingHelper.InferAudioCodec(url);
             }
 
+            var enableDlnaHeaders = !string.IsNullOrWhiteSpace(request.Params) /*||
+                                    string.Equals(Request.Headers.Get("GetContentFeatures.DLNA.ORG"), "1", StringComparison.OrdinalIgnoreCase)*/;
+
             var state = new StreamState(MediaSourceManager, Logger, TranscodingJobType)
             {
                 Request = request,
                 RequestedUrl = url,
-                UserAgent = Request.UserAgent
+                UserAgent = Request.UserAgent,
+                EnableDlnaHeaders = enableDlnaHeaders
             };
 
             var auth = AuthorizationContext.GetAuthorizationInfo(Request);
@@ -831,6 +721,13 @@ namespace MediaBrowser.Api.Playback
             var item = LibraryManager.GetItemById(request.Id);
 
             state.IsInputVideo = string.Equals(item.MediaType, MediaType.Video, StringComparison.OrdinalIgnoreCase);
+
+            //var primaryImage = item.GetImageInfo(ImageType.Primary, 0) ??
+            //             item.Parents.Select(i => i.GetImageInfo(ImageType.Primary, 0)).FirstOrDefault(i => i != null);
+            //if (primaryImage != null)
+            //{
+            //    state.AlbumCoverPath = primaryImage.Path;
+            //}
 
             MediaSourceInfo mediaSource = null;
             if (string.IsNullOrWhiteSpace(request.LiveStreamId))
@@ -969,7 +866,7 @@ namespace MediaBrowser.Api.Playback
             var videoCodec = state.ActualOutputVideoCodec;
 
             var mediaProfile = state.VideoRequest == null ?
-                profile.GetAudioMediaProfile(state.OutputContainer, audioCodec, state.OutputAudioChannels, state.OutputAudioBitrate) :
+                profile.GetAudioMediaProfile(state.OutputContainer, audioCodec, state.OutputAudioChannels, state.OutputAudioBitrate, state.OutputAudioSampleRate) :
                 profile.GetVideoMediaProfile(state.OutputContainer,
                 audioCodec,
                 videoCodec,
@@ -983,6 +880,7 @@ namespace MediaBrowser.Api.Playback
                 state.TargetPacketLength,
                 state.TargetTimestamp,
                 state.IsTargetAnamorphic,
+                state.IsTargetInterlaced,
                 state.TargetRefFrames,
                 state.TargetVideoStreamCount,
                 state.TargetAudioStreamCount,
@@ -1015,123 +913,6 @@ namespace MediaBrowser.Api.Playback
             }
         }
 
-        private async void ReportUsage(StreamState state)
-        {
-            try
-            {
-                await ReportUsageInternal(state).ConfigureAwait(false);
-            }
-            catch
-            {
-
-            }
-        }
-
-        private Task ReportUsageInternal(StreamState state)
-        {
-            if (!ServerConfigurationManager.Configuration.EnableAnonymousUsageReporting)
-            {
-                return Task.FromResult(true);
-            }
-
-            if (!MediaEncoder.IsDefaultEncoderPath)
-            {
-                return Task.FromResult(true);
-            }
-            return Task.FromResult(true);
-
-            //var dict = new Dictionary<string, string>();
-
-            //var outputAudio = GetAudioEncoder(state);
-            //if (!string.IsNullOrWhiteSpace(outputAudio))
-            //{
-            //    dict["outputAudio"] = outputAudio;
-            //}
-
-            //var outputVideo = GetVideoEncoder(state);
-            //if (!string.IsNullOrWhiteSpace(outputVideo))
-            //{
-            //    dict["outputVideo"] = outputVideo;
-            //}
-
-            //if (ServerConfigurationManager.Configuration.CodecsUsed.Contains(outputAudio ?? string.Empty, StringComparer.OrdinalIgnoreCase) &&
-            //    ServerConfigurationManager.Configuration.CodecsUsed.Contains(outputVideo ?? string.Empty, StringComparer.OrdinalIgnoreCase))
-            //{
-            //    return Task.FromResult(true);
-            //}
-
-            //dict["id"] = AppHost.SystemId;
-            //dict["type"] = state.VideoRequest == null ? "Audio" : "Video";
-
-            //var audioStream = state.AudioStream;
-            //if (audioStream != null && !string.IsNullOrWhiteSpace(audioStream.Codec))
-            //{
-            //    dict["inputAudio"] = audioStream.Codec;
-            //}
-
-            //var videoStream = state.VideoStream;
-            //if (videoStream != null && !string.IsNullOrWhiteSpace(videoStream.Codec))
-            //{
-            //    dict["inputVideo"] = videoStream.Codec;
-            //}
-
-            //var cert = GetType().Assembly.GetModules().First().GetSignerCertificate();
-            //if (cert != null)
-            //{
-            //    dict["assemblySig"] = cert.GetCertHashString();
-            //    dict["certSubject"] = cert.Subject ?? string.Empty;
-            //    dict["certIssuer"] = cert.Issuer ?? string.Empty;
-            //}
-            //else
-            //{
-            //    return Task.FromResult(true);
-            //}
-
-            //if (state.SupportedAudioCodecs.Count > 0)
-            //{
-            //    dict["supportedAudioCodecs"] = string.Join(",", state.SupportedAudioCodecs.ToArray());
-            //}
-
-            //var auth = AuthorizationContext.GetAuthorizationInfo(Request);
-
-            //dict["appName"] = auth.Client ?? string.Empty;
-            //dict["appVersion"] = auth.Version ?? string.Empty;
-            //dict["device"] = auth.Device ?? string.Empty;
-            //dict["deviceId"] = auth.DeviceId ?? string.Empty;
-            //dict["context"] = "streaming";
-
-            ////Logger.Info(JsonSerializer.SerializeToString(dict));
-            //if (!ServerConfigurationManager.Configuration.CodecsUsed.Contains(outputAudio ?? string.Empty, StringComparer.OrdinalIgnoreCase))
-            //{
-            //    var list = ServerConfigurationManager.Configuration.CodecsUsed.ToList();
-            //    list.Add(outputAudio);
-            //    ServerConfigurationManager.Configuration.CodecsUsed = list.ToArray();
-            //}
-
-            //if (!ServerConfigurationManager.Configuration.CodecsUsed.Contains(outputVideo ?? string.Empty, StringComparer.OrdinalIgnoreCase))
-            //{
-            //    var list = ServerConfigurationManager.Configuration.CodecsUsed.ToList();
-            //    list.Add(outputVideo);
-            //    ServerConfigurationManager.Configuration.CodecsUsed = list.ToArray();
-            //}
-
-            //ServerConfigurationManager.SaveConfiguration();
-
-            ////Logger.Info(JsonSerializer.SerializeToString(dict));
-            //var options = new HttpRequestOptions()
-            //{
-            //    Url = "https://mb3admin.com/admin/service/transcoding/report",
-            //    CancellationToken = CancellationToken.None,
-            //    LogRequest = false,
-            //    LogErrors = false,
-            //    BufferContent = false
-            //};
-            //options.RequestContent = JsonSerializer.SerializeToString(dict);
-            //options.RequestContentType = "application/json";
-
-            //return HttpClient.Post(options);
-        }
-
         /// <summary>
         /// Adds the dlna headers.
         /// </summary>
@@ -1141,6 +922,11 @@ namespace MediaBrowser.Api.Playback
         /// <returns><c>true</c> if XXXX, <c>false</c> otherwise</returns>
         protected void AddDlnaHeaders(StreamState state, IDictionary<string, string> responseHeaders, bool isStaticallyStreamed)
         {
+            if (!state.EnableDlnaHeaders)
+            {
+                return;
+            }
+
             var profile = state.DeviceProfile;
 
             var transferMode = GetHeader("transferMode.dlna.org");
@@ -1204,6 +990,7 @@ namespace MediaBrowser.Api.Playback
                     state.TargetPacketLength,
                     state.TranscodeSeekInfo,
                     state.IsTargetAnamorphic,
+                    state.IsTargetInterlaced,
                     state.TargetRefFrames,
                     state.TargetVideoStreamCount,
                     state.TargetAudioStreamCount,

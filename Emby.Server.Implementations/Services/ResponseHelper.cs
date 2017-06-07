@@ -12,82 +12,28 @@ namespace Emby.Server.Implementations.Services
 {
     public static class ResponseHelper
     {
-        private static async Task<bool> WriteToOutputStream(IResponse response, object result)
-        {
-            var asyncStreamWriter = result as IAsyncStreamWriter;
-            if (asyncStreamWriter != null)
-            {
-                await asyncStreamWriter.WriteToAsync(response.OutputStream, CancellationToken.None).ConfigureAwait(false);
-                return true;
-            }
-
-            var streamWriter = result as IStreamWriter;
-            if (streamWriter != null)
-            {
-                streamWriter.WriteTo(response.OutputStream);
-                return true;
-            }
-
-            var stream = result as Stream;
-            if (stream != null)
-            {
-                using (stream)
-                {
-                    await stream.CopyToAsync(response.OutputStream).ConfigureAwait(false);
-                    return true;
-                }
-            }
-
-            var bytes = result as byte[];
-            if (bytes != null)
-            {
-                response.ContentType = "application/octet-stream";
-                response.SetContentLength(bytes.Length);
-
-                await response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
-                return true;
-            }
-
-            return false;
-        }
-
-        public static Task WriteToResponse(IResponse httpRes, IRequest httpReq, object result)
+        public static async Task WriteToResponse(IResponse response, IRequest request, object result, CancellationToken cancellationToken)
         {
             if (result == null)
             {
-                if (httpRes.StatusCode == (int)HttpStatusCode.OK)
+                if (response.StatusCode == (int)HttpStatusCode.OK)
                 {
-                    httpRes.StatusCode = (int)HttpStatusCode.NoContent;
+                    response.StatusCode = (int)HttpStatusCode.NoContent;
                 }
 
-                httpRes.SetContentLength(0);
-                return Task.FromResult(true);
+                response.SetContentLength(0);
+                return;
             }
 
             var httpResult = result as IHttpResult;
             if (httpResult != null)
             {
-                httpResult.RequestContext = httpReq;
-                httpReq.ResponseContentType = httpResult.ContentType ?? httpReq.ResponseContentType;
-                return WriteToResponseInternal(httpRes, httpResult, httpReq);
+                httpResult.RequestContext = request;
+                request.ResponseContentType = httpResult.ContentType ?? request.ResponseContentType;
             }
 
-            return WriteToResponseInternal(httpRes, result, httpReq);
-        }
-
-        /// <summary>
-        /// Writes to response.
-        /// Response headers are customizable by implementing IHasHeaders an returning Dictionary of Http headers.
-        /// </summary>
-        /// <param name="response">The response.</param>
-        /// <param name="result">Whether or not it was implicity handled by ServiceStack's built-in handlers.</param>
-        /// <param name="request">The serialization context.</param>
-        /// <returns></returns>
-        private static async Task WriteToResponseInternal(IResponse response, object result, IRequest request)
-        {
             var defaultContentType = request.ResponseContentType;
 
-            var httpResult = result as IHttpResult;
             if (httpResult != null)
             {
                 if (httpResult.RequestContext == null)
@@ -141,18 +87,53 @@ namespace Emby.Server.Implementations.Services
                 response.ContentType += "; charset=utf-8";
             }
 
-            var writeToOutputStreamResult = await WriteToOutputStream(response, result).ConfigureAwait(false);
-            if (writeToOutputStreamResult)
+            var asyncStreamWriter = result as IAsyncStreamWriter;
+            if (asyncStreamWriter != null)
             {
+                await asyncStreamWriter.WriteToAsync(response.OutputStream, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            var streamWriter = result as IStreamWriter;
+            if (streamWriter != null)
+            {
+                streamWriter.WriteTo(response.OutputStream);
+                return;
+            }
+
+            var fileWriter = result as FileWriter;
+            if (fileWriter != null)
+            {
+                await fileWriter.WriteToAsync(response, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            var stream = result as Stream;
+            if (stream != null)
+            {
+                using (stream)
+                {
+                    await stream.CopyToAsync(response.OutputStream).ConfigureAwait(false);
+                    return;
+                }
+            }
+
+            var bytes = result as byte[];
+            if (bytes != null)
+            {
+                response.ContentType = "application/octet-stream";
+                response.SetContentLength(bytes.Length);
+
+                await response.OutputStream.WriteAsync(bytes, 0, bytes.Length, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
             var responseText = result as string;
             if (responseText != null)
             {
-                var bytes = Encoding.UTF8.GetBytes(responseText);
+                bytes = Encoding.UTF8.GetBytes(responseText);
                 response.SetContentLength(bytes.Length);
-                await response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+                await response.OutputStream.WriteAsync(bytes, 0, bytes.Length, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
@@ -163,7 +144,7 @@ namespace Emby.Server.Implementations.Services
         {
             var contentType = request.ResponseContentType;
             var serializer = RequestHelper.GetResponseWriter(HttpListenerHost.Instance, contentType);
-            
+
             using (var ms = new MemoryStream())
             {
                 serializer(result, ms);
